@@ -1,0 +1,5 @@
+build/
+.cmake/
+
+sdkconfig
+sdkconfig.old
