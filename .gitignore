@@ -3,3 +3,6 @@ build/
 
 sdkconfig
 sdkconfig.old
+
+.vscode/
+.idea/
