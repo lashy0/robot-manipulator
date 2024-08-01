@@ -101,7 +101,7 @@ esp_err_t pca9685_set_pwm_freq(uint16_t freq_hz)
 {
     // TODO: добавить проверку входного значения freq_hz
 
-    uint8_t prescale_val = (uint8_t)(FREQUENCY_OSCILLATOR / (4096.0 * freq_hz) - 1 + 0.5);
+    uint8_t prescale_val = (uint8_t)(FREQUENCY_OSCILLATOR / (4096.0 * freq_hz) - 1);
 
     if (prescale_val < PCA9685_PRESCALE_MIN || prescale_val > PCA9685_PRESCALE_MAX) {
         ESP_LOGE(TAG, "Calculated prescale value out of range");
@@ -134,5 +134,19 @@ esp_err_t pca9685_set_pwm_freq(uint16_t freq_hz)
     }
 
     ESP_LOGI(TAG, "PWM frequency set to %d Hz with prescale value %d", freq_hz, prescale_val);
+    return ESP_OK;
+}
+
+// TODO: подумать какого типа должен быть freq_hz
+esp_err_t pca9685_get_pwm_freq(float *freq_hz)
+{
+    uint8_t prescale_val;
+    esp_err_t ret = pca9685_read(PCA9685_PRESCALE, &prescale_val);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    *freq_hz = FREQUENCY_OSCILLATOR / (4096.0 * (prescale_val + 1));
+
     return ESP_OK;
 }

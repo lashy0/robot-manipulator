@@ -5,7 +5,7 @@
 #include "esp_log.h"
 
 #define PCA9685_ADDR            0x40
-#define PWM_DEFAULT_FREQ                50
+#define PWM_DEFAULT_FREQ        50
 #define FREQUENCY_OSCILLATOR    25000000
 
 #define PCA9685_PRESCALE_MIN    3
@@ -37,5 +37,7 @@ esp_err_t pca9685_set_pwm(uint8_t channel, uint16_t on, uint16_t off);
 esp_err_t pca9685_get_pwm(uint8_t channel, uint16_t *on, uint16_t *off);
 
 esp_err_t pca9685_set_pwm_freq(uint16_t freq_hz);
+
+esp_err_t pca9685_get_pwm_freq(float *freq_hz);
 
 #endif
