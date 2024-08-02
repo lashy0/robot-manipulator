@@ -12,8 +12,14 @@
 
 uint16_t angle_to_pwm(float angle);
 
+float pwm_to_angle(uint16_t pwm);
+
 void set_servo_position(uint8_t channel, float angle);
 
+float get_servo_position(uint8_t channel);
+
 void rotate_servo(uint8_t channel, float angle_delta);
+
+void move_servo_smooth(uint8_t channel, float target_angle, float step_delay);
 
 #endif

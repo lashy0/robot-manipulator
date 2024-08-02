@@ -30,7 +30,7 @@ esp_err_t pca9685_init(void);
 
 esp_err_t pca9685_write(uint8_t reg, uint8_t data);
 
-esp_err_t pca9685_read(uint8_t reg, uint8_t *data);
+esp_err_t pca9685_read(uint8_t reg, uint8_t *data, size_t len);
 
 esp_err_t pca9685_set_pwm(uint8_t channel, uint16_t on, uint16_t off);
 

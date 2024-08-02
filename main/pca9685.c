@@ -42,13 +42,13 @@ esp_err_t pca9685_write(uint8_t reg, uint8_t data)
     return ret;
 }
 
-esp_err_t pca9685_read(uint8_t reg, uint8_t *data)
+esp_err_t pca9685_read(uint8_t reg, uint8_t *data, size_t len)
 {
     esp_err_t ret = i2c_master_transmit(pca9685_handle, &reg, 1, I2C_MASTER_TIMEOUT_MS);
     if (ret != ESP_OK) {
         return ret;
     }
-    ret = i2c_master_receive(pca9685_handle, data, 1, I2C_MASTER_TIMEOUT_MS);
+    ret = i2c_master_receive(pca9685_handle, data, len, I2C_MASTER_TIMEOUT_MS);
     return ret;
 }
 
@@ -109,7 +109,7 @@ esp_err_t pca9685_set_pwm_freq(uint16_t freq_hz)
     }
 
     uint8_t mode1;
-    esp_err_t ret = pca9685_read(PCA9685_MODE1, &mode1);
+    esp_err_t ret = pca9685_read(PCA9685_MODE1, &mode1, 1);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read MODE1 register");
         return ret;
@@ -141,7 +141,7 @@ esp_err_t pca9685_set_pwm_freq(uint16_t freq_hz)
 esp_err_t pca9685_get_pwm_freq(float *freq_hz)
 {
     uint8_t prescale_val;
-    esp_err_t ret = pca9685_read(PCA9685_PRESCALE, &prescale_val);
+    esp_err_t ret = pca9685_read(PCA9685_PRESCALE, &prescale_val, 1);
     if (ret != ESP_OK) {
         return ret;
     }

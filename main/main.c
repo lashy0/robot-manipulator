@@ -41,6 +41,24 @@ void app_main(void) {
         printf("Failed to get current PWM frequency\n");
     }
 
+    uint8_t channel = 10;
+    float target_angle = 45.0;
+    float ang;
+    uint16_t pwm;
+    float current;
+
+    while (true) {
+        current = acs712_read_current();
+        ang = get_servo_position(channel);
+        pwm = angle_to_pwm(ang);
+        move_servo_smooth(channel, 90.0, 20);
+        printf("Current: %.2f A\n", current);
+        printf("Current angle channel %d: %.2f, %d\n", channel, ang, pwm);
+        vTaskDelay(pdMS_TO_TICKS(3000));
+        target_angle = (target_angle == 45.0) ? 0.0 : 45.0;
+    }
+
+    #if 0
     while (true) {
         float current = acs712_read_current();
 
@@ -50,6 +68,7 @@ void app_main(void) {
         }
 
         printf("Current: %.2f A\n", current);
-        vTaskDelay(pdMS_TO_TICKS(1000));  // Wait for 1 second
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
+    #endif
 }
