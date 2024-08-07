@@ -1,138 +1,181 @@
 #include "acs712.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
-#define TAG "acs712"
+static const char *TAG = "ACS712";
 
-static adc_oneshot_unit_handle_t adc_handle;
-static adc_cali_handle_t adc_cali_handle;
-static int zero_current_voltage = 2500; // Default zero current voltage in mV
-
-void delay_us(uint32_t us) {
-    uint64_t start = esp_timer_get_time();
-    while ((esp_timer_get_time() - start) < us) {
-        // Busy-wait loop
-    }
-}
-
-esp_err_t init_adc_calibration() {
-    adc_cali_curve_fitting_config_t cali_config = {
-        .unit_id = ADC_UNIT_1,
-        .atten = ACS712_ADC_ATTEN,
-        .bitwidth = ACS712_ADC_BITWIDTH,
-    };
-    esp_err_t ret = adc_cali_create_scheme_curve_fitting(&cali_config, &adc_cali_handle);
-
-    return ret;
-}
-
-
-esp_err_t acs712_init(void)
+static bool acs712_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle)
 {
-    esp_err_t ret;
+    adc_cali_handle_t handle = NULL;
+    esp_err_t ret = ESP_FAIL;
+    bool calibrated = false;
 
-    // Initialize ADC
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+    if (!calibrated) {
+        ESP_LOGI(TAG, "calibration scheme version is %s", "Curve Fitting");
+        adc_cali_curve_fitting_config_t cali_config = {
+            .unit_id = unit,
+            .chan = channel,
+            .atten = atten,
+            .bitwidth = ADC_BITWIDTH_DEFAULT,
+        };
+        ret = adc_cali_create_scheme_curve_fitting(&cali_config, &handle);
+        if (ret == ESP_OK) {
+            calibrated = true;
+        }
+    }
+#endif
+
+#if ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    if (!calibrated) {
+        ESP_LOGI(TAG, "calibration scheme version is %s", "Line Fitting");
+        adc_cali_line_fitting_config_t cali_config = {
+            .unit_id = unit,
+            .atten = atten,
+            .bitwidth = ADC_BITWIDTH_DEFAULT,
+        };
+        ret = adc_cali_create_scheme_line_fitting(&cali_config, &handle);
+        if (ret == ESP_OK) {
+            calibrated = true;
+        }
+    }
+#endif
+
+    *out_handle = handle;
+    if (ret == ESP_OK) {
+        ESP_LOGI(TAG, "Calibration success");
+    }
+    else if (ret == ESP_ERR_NOT_SUPPORTED || !calibrated) {
+        ESP_LOGW(TAG, "eFuse not burnt, skip software calibration");
+    }
+    else {
+        ESP_LOGE(TAG, "Invalid arg or no memory");
+    }
+
+    return calibrated;
+}
+
+static void acs712_calibration_deinit(adc_cali_handle_t handle)
+{
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+    ESP_LOGI(TAG, "deregister %s calibration scheme", "Curve Fitting");
+    ESP_ERROR_CHECK(adc_cali_delete_scheme_curve_fitting(handle));
+
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    ESP_LOGI(TAG, "deregister %s calibration scheme", "Line Fitting");
+    ESP_ERROR_CHECK(adc_cali_delete_scheme_line_fitting(handle));
+#endif
+}
+
+esp_err_t acs712_init(acs712_t *acs, adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, float sensitivity)
+{
+    esp_err_t ret = ESP_FAIL;
+
     adc_oneshot_unit_init_cfg_t init_config = {
-        .unit_id = ADC_UNIT_1,
+        .unit_id = unit,
         .clk_src = ADC_DIGI_CLK_SRC_DEFAULT,
     };
 
-    ret = adc_oneshot_new_unit(&init_config, &adc_handle);
+    ret = adc_oneshot_new_unit(&init_config, &acs->adc_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize ADC unit");
         return ret;
     }
 
-    // Configure ADC width
     adc_oneshot_chan_cfg_t config = {
-        .bitwidth = ACS712_ADC_BITWIDTH,
-        .atten = ACS712_ADC_ATTEN,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+        .atten = atten,
     };
 
-    ret = adc_oneshot_config_channel(adc_handle, ACS712_ADC_CHANNEL, &config);
+    ret = adc_oneshot_config_channel(acs->adc_handle, channel, &config);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to configure ADC channel");
         return ret;
     }
 
-    // Test read to ensure ADC is configured correctly
-    int adc_value;
-    ret = adc_oneshot_read(adc_handle, ACS712_ADC_CHANNEL, &adc_value);
+    acs->calibrated = acs712_calibration_init(unit, channel, atten, &acs->cali_handle);
+    acs->adc_channel = channel;
+    acs->sensitivity = sensitivity;
+
+    return ESP_OK;
+}
+
+void acs712_deinit(acs712_t *acs)
+{
+    ESP_ERROR_CHECK(adc_oneshot_del_unit(acs->adc_handle));
+    if (acs->calibrated) {
+        acs712_calibration_deinit(acs->cali_handle);
+    }
+}
+
+esp_err_t acs712_read_raw(acs712_t *acs, int *data)
+{
+    esp_err_t ret = ESP_FAIL;
+    
+    ret = adc_oneshot_read(acs->adc_handle, acs->adc_channel, data);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read from ADC channel");
         return ret;
     }
 
-    ret = init_adc_calibration();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "ADC calibration initialization failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
-    ESP_LOGI(TAG, "ACS712 initialized successfully");
     return ESP_OK;
 }
 
-void acs712_calibrate_zero_current()
+esp_err_t acs712_read_filtered_raw(acs712_t *acs, int *data)
 {
-    if (adc_handle == NULL || adc_cali_handle == NULL) {
-        ESP_LOGE(TAG, "ADC or Calibration handle not initialized");
-        return;
+    esp_err_t ret = ESP_FAIL;
+    int sum = 0;
+    int raw;
+
+    for (int i = 0; i < 10; i++) {
+        ret = acs712_read_raw(acs, &raw);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+        sum += raw;
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
-    int adc_reading = 0;
-    int sum = 0;
-    int samples = NUM_SAMPLES;
-    for (int i = 0; i < samples; ++i) {
-        adc_oneshot_read(adc_handle, ACS712_ADC_CHANNEL, &adc_reading);
-        sum += adc_reading;
-        delay_us(10000);  // Short delay between samples
-    }
-    adc_reading = sum / samples;
-    adc_cali_raw_to_voltage(adc_cali_handle, adc_reading, &zero_current_voltage);
-    printf("Calibrated zero current voltage: %d mV\n", zero_current_voltage);
+    *data = sum / 10;
+
+    return ESP_OK;
 }
 
-int read_filtered_adc()
+esp_err_t acs712_read_voltage(acs712_t *acs, int *data)
 {
-    int adc_reading = 0;
-    int sum = 0;
-    for (int i = 0; i < NUM_SAMPLES; ++i) {
-        adc_oneshot_read(adc_handle, ACS712_ADC_CHANNEL, &adc_reading);
-        sum += adc_reading;
-        delay_us(10000); // Short delay between samples
-    }
-    return sum / NUM_SAMPLES;
-}
+    esp_err_t ret = ESP_FAIL;
+    int raw;
 
-float acs712_read_current(void) {
-    int adc_value = read_filtered_adc();
-    // esp_err_t ret = adc_oneshot_read(adc_handle, ACS712_ADC_CHANNEL, &adc_value);
-    // if (ret != ESP_OK) {
-    //     ESP_LOGE(TAG, "Failed to read from ADC channel");
-    //     return 0.0;  // Return 0 on error
-    // }
-    int voltage;
-    adc_cali_raw_to_voltage(adc_cali_handle, adc_value, &voltage);
-
-    float current = ((float)voltage - zero_current_voltage) / ACS712_SENSITIVITY;
-
-    return current;
-}
-
-float acs712_read_voltage(void) {
-    int adc_value = read_filtered_adc();
-    // esp_err_t ret = adc_oneshot_read(adc_handle, ACS712_ADC_CHANNEL, &adc_value);
-    // if (ret != ESP_OK) {
-    //     ESP_LOGE(TAG, "Failed to read from ADC channel");
-    //     return 0.0;  // Return 0 on error
-    // }
-    int voltage;
-    esp_err_t ret = adc_cali_raw_to_voltage(adc_cali_handle, adc_value, &voltage);
+    ret = acs712_read_raw(acs, &raw);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to convert ADC value to voltage");
-        return 0.0;  // Return 0 on error
+        return ret;
     }
 
-    return voltage / 1000.0; // Convert mV to V
+    int voltage;
+    ret = adc_cali_raw_to_voltage(acs->cali_handle, raw, &voltage);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage");
+        return ret;
+    }
+
+    *data = voltage;
+
+    return ESP_OK;
+}
+
+esp_err_t acs712_read_current(acs712_t *acs, float *data)
+{
+    esp_err_t ret = ESP_FAIL;
+    int voltage;
+
+    ret = acs712_read_voltage(acs, &voltage);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read voltage");
+        return ret;
+    }
+
+    *data = ((float)voltage - 2500) / acs->sensitivity;
+
+    return ESP_OK;
 }

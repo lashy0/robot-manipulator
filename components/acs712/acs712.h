@@ -5,22 +5,21 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#define ACS712_ADC_CHANNEL              ADC_CHANNEL_2
-#define ACS712_ADC_ATTEN                ADC_ATTEN_DB_12
-#define ACS712_ADC_BITWIDTH             ADC_BITWIDTH_12
+typedef struct 
+{
+    adc_oneshot_unit_handle_t adc_handle;
+    adc_channel_t adc_channel;
+    adc_cali_handle_t cali_handle;
+    bool calibrated;
+    float sensitivity;
+} acs712_t;
 
-// Constants for ACS712 5A version
-#define ACS712_SENSITIVITY      185  // Sensitivity in mV/A for 5A version
-#define NUM_SAMPLES             100
 
-esp_err_t acs712_init(void);
-
-void acs712_calibrate_zero_current();
-
-int read_filtered_adc();
-
-float acs712_read_current(void);
-
-float acs712_read_voltage(void);
+esp_err_t acs712_init(acs712_t *acs, adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, float sensitivity);
+void acs712_deinit(acs712_t *acs);
+esp_err_t acs712_read_raw(acs712_t *acs, int *data);
+esp_err_t acs712_read_filtered_raw(acs712_t *acs, int *data);
+esp_err_t acs712_read_voltage(acs712_t *acs, int *data);
+esp_err_t acs712_read_current(acs712_t *acs, float *data);
 
 #endif
