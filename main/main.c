@@ -1,74 +1,55 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_log.h"
 
-#include "i2c_handler.h"
-#include "pca9685.h"
 #include "acs712.h"
-#include "servo_handler.h"
+#include "i2c_tools.h"
 
-static const char *TAG = "main";
+// Parameters ADC ACS712T 5A
+#define ACS712_ADC_CHANNEL          ADC_CHANNEL_2
+#define ACS712_ADC_UNIT             ADC_UNIT_1
+#define ACS712_ADC_ATTEN            ADC_ATTEN_DB_12
+#define ACS712_SENSITIVITY          185.0
 
-esp_err_t set_pwm_for_current(uint8_t channel, float desired_current) {
-    // Implement your logic to convert desired_current to PWM value
-    // For simplicity, let's assume a direct mapping, which you may need to calibrate
-    uint16_t on_time = 0;
-    uint16_t off_time = (uint16_t)((desired_current / 5.0) * 4095);
+// Parameters I2C
+#define I2C_MASTER_SCL_IO           GPIO_NUM_7
+#define I2C_MASTER_SDA_IO           GPIO_NUM_6
+#define I2C_MASTER_NUM              I2C_NUM_0
+#define I2C_MASTER_FREQ_HZ          100000
 
-    return pca9685_set_pwm(channel, on_time, off_time);
-}
+void app_main(void)
+{
+    // Init I2C
+    i2c_bus_t i2c_bus = {
+        .port = I2C_MASTER_NUM,
+        .sda_io_num = I2C_MASTER_SDA_IO,
+        .scl_io_num = I2C_MASTER_SCL_IO,
+        .clk_speed = I2C_MASTER_FREQ_HZ,
+    };
 
-void app_main(void) {
-    ESP_ERROR_CHECK(i2c_master_init());
-    ESP_ERROR_CHECK(pca9685_init());
-    ESP_ERROR_CHECK(acs712_init());
+    ESP_ERROR_CHECK(i2c_master_init(&i2c_bus));
 
-    esp_err_t ret;
+    ESP_ERROR_CHECK(i2c_master_scan(&i2c_bus));
 
-    #if 0
-    ret = pca9685_set_pwm_freq(40);
-    if (ret != ESP_OK) {
-        printf("Failed to set PWM frequency\n");
-    }
-    #endif
+    // Init ACS712
+    acs712_t acs;
 
-    float current_freq;
-    ret = pca9685_get_pwm_freq(&current_freq);
-    if (ret == ESP_OK) {
-    printf("Current PWM frequency: %.2f Hz\n", current_freq);
-    } else {
-        printf("Failed to get current PWM frequency\n");
-    }
+    ESP_ERROR_CHECK(acs712_init(&acs, ACS712_ADC_UNIT, ACS712_ADC_CHANNEL, ACS712_ADC_ATTEN, ACS712_SENSITIVITY));
 
-    uint8_t channel = 10;
-    float target_angle = 45.0;
-    float ang;
-    uint16_t pwm;
-    float current;
+    while (1) {
+        float current;
+        int voltage;
+        int raw;
 
-    while (true) {
-        current = acs712_read_current();
-        ang = get_servo_position(channel);
-        pwm = angle_to_pwm(ang);
-        move_servo_smooth(channel, 90.0, 20);
-        printf("Current: %.2f A\n", current);
-        printf("Current angle channel %d: %.2f, %d\n", channel, ang, pwm);
-        vTaskDelay(pdMS_TO_TICKS(3000));
-        target_angle = (target_angle == 45.0) ? 0.0 : 45.0;
-    }
+        ESP_ERROR_CHECK(acs712_read_raw(&acs, &raw));
+        ESP_ERROR_CHECK(acs712_read_voltage(&acs, &voltage));
+        ESP_ERROR_CHECK(acs712_read_current(&acs, &current));
 
-    #if 0
-    while (true) {
-        float current = acs712_read_current();
+        printf("Raw: %d\tVoltage: %d mV\tCurrent: %2f A\n", raw, voltage, current);
 
-        float desired_current = 2.0;  // For example, 2A
-        if (set_pwm_for_current(0, desired_current) != ESP_OK) {
-            printf("Failed to set PWM for current\n");
-        }
-
-        printf("Current: %.2f A\n", current);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
-    #endif
+
+    acs712_deinit(&acs);
+    i2c_master_deinit(&i2c_bus);
 }
