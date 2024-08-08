@@ -5,6 +5,7 @@
 #include "acs712.h"
 #include "i2c_tools.h"
 #include "pca9685.h"
+#include "servo_control.h"
 
 // Parameters ADC ACS712T 5A
 #define ACS712_ADC_CHANNEL          ADC_CHANNEL_2
@@ -18,6 +19,7 @@
 #define I2C_MASTER_NUM              I2C_NUM_0
 #define I2C_MASTER_FREQ_HZ          100000
 
+// Parametrs I2C PCA9685
 #define PCA9685_I2C_ADDR            0x40
 
 void app_main(void)
@@ -47,7 +49,7 @@ void app_main(void)
     ESP_ERROR_CHECK(pca9685_init(&pca9685_config, &pca9685_handle));
     ESP_ERROR_CHECK(pca9685_set_pwm_freq(pca9685_handle, 50));
 
-    ESP_ERROR_CHECK(pca9685_set_pwm(pca9685_handle, 0, 1024, 3072));
+    ESP_ERROR_CHECK(pca9685_set_pwm(pca9685_handle, 0, 0, 512));
 
     uint16_t on_time;
     uint16_t off_time;
@@ -55,23 +57,30 @@ void app_main(void)
     ESP_ERROR_CHECK(pca9685_get_pwm(pca9685_handle, 0, &on_time, &off_time));
     printf("Channel 0 - On time: %d, Off time: %d\n", on_time, off_time);
 
+    // Init Servo
+    servo_t servo_10;
+    ESP_ERROR_CHECK(servo_init(&servo_10, pca9685_handle, 10));
+    
+
     // Init ACS712
+    // TODO: разделить также как в pca9685
     acs712_t acs;
 
     ESP_ERROR_CHECK(acs712_init(&acs, ACS712_ADC_UNIT, ACS712_ADC_CHANNEL, ACS712_ADC_ATTEN, ACS712_SENSITIVITY));
 
+    float offset_voltage = acs712_calibrate(&acs);
+    printf("Calibrated offset voltage: %.2f mV\n", offset_voltage);
+
     while (1) {
-        float current;
-        int voltage;
-        int raw;
+        ESP_ERROR_CHECK(servo_set_angle(&servo_10, 0));
 
-        ESP_ERROR_CHECK(acs712_read_raw(&acs, &raw));
-        ESP_ERROR_CHECK(acs712_read_voltage(&acs, &voltage));
-        ESP_ERROR_CHECK(acs712_read_current(&acs, &current));
+        vTaskDelay(pdMS_TO_TICKS(300));
 
-        printf("Raw: %d\tVoltage: %d mV\tCurrent: %2f A\n", raw, voltage, current);
+        ESP_ERROR_CHECK(servo_set_angle(&servo_10, 90));
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        acs712_print_info(&acs, offset_voltage);
+
+        vTaskDelay(pdMS_TO_TICKS(300));
     }
 
     acs712_deinit(&acs);

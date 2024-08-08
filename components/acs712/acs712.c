@@ -164,7 +164,7 @@ esp_err_t acs712_read_voltage(acs712_t *acs, int *data)
     return ESP_OK;
 }
 
-esp_err_t acs712_read_current(acs712_t *acs, float *data)
+esp_err_t acs712_read_current(acs712_t *acs, float *data, float offset_voltage)
 {
     esp_err_t ret = ESP_FAIL;
     int voltage;
@@ -175,7 +175,41 @@ esp_err_t acs712_read_current(acs712_t *acs, float *data)
         return ret;
     }
 
-    *data = ((float)voltage - 2500) / acs->sensitivity;
+    *data = ((float)voltage - offset_voltage) / acs->sensitivity;
 
     return ESP_OK;
+}
+
+float acs712_calibrate(acs712_t *acs) {
+    int raw;
+    int sum = 0;
+    const int samples = 100;
+
+    for (int i = 0; i < samples; i++) {
+        if (acs712_read_raw(acs, &raw) == ESP_OK) {
+            sum += raw;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    int average = sum / samples;
+    int voltage;
+    if (adc_cali_raw_to_voltage(acs->cali_handle, average, &voltage) == ESP_OK) {
+        return voltage;
+    }
+
+    return 0;
+}
+
+void acs712_print_info(acs712_t *acs, float offset_voltage)
+{
+    int raw;
+    int voltage;
+    float current;
+
+    acs712_read_raw(acs, &raw);
+    acs712_read_voltage(acs, &voltage);
+    current = ((float)voltage - offset_voltage) / acs->sensitivity;
+
+    printf("Raw: %d\tVoltage: %d mV\tCurrent: %2f A\n", raw, voltage, current);
 }

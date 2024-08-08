@@ -13,7 +13,7 @@ esp_err_t i2c_master_init(i2c_bus_t *bus)
         .scl_io_num = bus->scl_io_num,
         .sda_io_num = bus->sda_io_num,
         .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 0,
+        .glitch_ignore_cnt = 7,
         .flags = {
             .enable_internal_pullup = true,
         },

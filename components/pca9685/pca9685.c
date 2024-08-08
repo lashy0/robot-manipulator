@@ -10,7 +10,7 @@ esp_err_t pca9685_write(pca9685_handle_t handle, uint8_t reg, uint8_t data)
     esp_err_t ret = ESP_FAIL;
     uint8_t buffer[2] = {reg, data};
     
-    ret = i2c_master_transmit(handle->i2c_dev, buffer, sizeof(buffer), PCA9685_I2C_TIMEOUT_MS);
+    ret = i2c_master_transmit(handle->i2c_dev, buffer, sizeof(buffer), -1);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write data the device");
         return ret;
@@ -23,13 +23,13 @@ esp_err_t pca9685_read(pca9685_handle_t handle, uint8_t reg, uint8_t *data)
 {
     esp_err_t ret = ESP_FAIL;
 
-    ret = i2c_master_transmit(handle->i2c_dev, &reg, 1, PCA9685_I2C_TIMEOUT_MS);
+    ret = i2c_master_transmit(handle->i2c_dev, &reg, 1, -1);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write register address");
         return ret;
     }
 
-    ret = i2c_master_receive(handle->i2c_dev, data, 1, PCA9685_I2C_TIMEOUT_MS);
+    ret = i2c_master_receive(handle->i2c_dev, data, 1, -1);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read data the device");
         return ret;
@@ -85,7 +85,7 @@ esp_err_t pca9685_set_pwm(pca9685_handle_t handle, uint8_t channel, uint16_t on_
         (off_time >> 8) & 0xFF
     };
 
-    ret = i2c_master_transmit(handle->i2c_dev, data, sizeof(data), PCA9685_I2C_TIMEOUT_MS);
+    ret = i2c_master_transmit(handle->i2c_dev, data, sizeof(data), -1);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set PWM register");
         return ret;
@@ -100,7 +100,7 @@ esp_err_t pca9685_get_pwm(pca9685_handle_t handle, uint8_t channel, uint16_t *on
     uint8_t reg_addr = PCA9685_LED0_ON_L + 4 * channel;
     uint8_t data[4];
 
-    ret = i2c_master_transmit_receive(handle->i2c_dev, &reg_addr, 1, data, 4, PCA9685_I2C_TIMEOUT_MS);
+    ret = i2c_master_transmit_receive(handle->i2c_dev, &reg_addr, 1, data, 4, -1);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read PWM register");
         return ret;

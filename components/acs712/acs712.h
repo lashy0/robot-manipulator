@@ -19,6 +19,9 @@ void acs712_deinit(acs712_t *acs);
 esp_err_t acs712_read_raw(acs712_t *acs, int *data);
 esp_err_t acs712_read_filtered_raw(acs712_t *acs, int *data);
 esp_err_t acs712_read_voltage(acs712_t *acs, int *data);
-esp_err_t acs712_read_current(acs712_t *acs, float *data);
+esp_err_t acs712_read_current(acs712_t *acs, float *data, float offset_voltage);
+
+float acs712_calibrate(acs712_t *acs);
+void acs712_print_info(acs712_t *acs, float offset_voltage);
 
 #endif
