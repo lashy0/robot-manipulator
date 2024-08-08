@@ -54,7 +54,7 @@ bool i2c_is_device_connet(i2c_bus_t *bus, uint8_t addr)
 {
     esp_err_t ret = ESP_FAIL;
 
-    ret = i2c_master_probe(bus->handle, i2c_addr, I2C_MASTER_TIMEOUT_DEFAULT);
+    ret = i2c_master_probe(bus->handle, addr, I2C_MASTER_TIMEOUT_DEFAULT);
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "Device found at address: 0x%02x", addr);
         return true;
