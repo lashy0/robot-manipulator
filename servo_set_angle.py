@@ -8,14 +8,14 @@ BAUD_RATE = 115200
 LOG_PATTERN = re.compile(r"^[IWF] \(\d+\).*")
 
 
-def send_angle_to_esp32(angle):
+def send_angle_to_esp32(channel, angle):
     """ Sends the angle value to the ESP32 over USB Serial JTAG and reads responses """
     try:
         with serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=1) as ser:
             # Send the angle value followed by newline to ESP32
-            angle_str = str(angle) + '\n'
-            ser.write(angle_str.encode('utf-8'))
-            print(f"Sent: {angle_str.strip()}")
+            command_str = f"{channel} {angle}\n"
+            ser.write(command_str.encode('utf-8'))
+            print(f"Sent: {command_str.strip()}")
 
             while True:
                 response = ser.readline().decode('utf-8').strip()
@@ -41,11 +41,17 @@ if __name__ == "__main__":
     while True:
         try:
             # Get angle input from the user
-            angle = float(input("Enter servo angle (0 to 180 degrees): "))
-            if 0 <= angle <= 180:
-                send_angle_to_esp32(angle)
+            input_data = input("Enter servo channel (0-15) and angle (0 to 180 degrees): ")
+            print(input_data)
+            channel, angle = input_data.split()
+            
+            channel = int(channel)
+            angle = float(angle)
+            
+            if 0 <= channel <= 15 and 0 <= angle <= 180:
+                send_angle_to_esp32(channel, angle)
             else:
-                print("Please enter a value between 0 and 180")
+                print("Please enter a valid channel (0 to 15) and angle (0 to 180 degrees)")
         except ValueError:
             print("Invalid input. Please enter a number.")
         except KeyboardInterrupt:
