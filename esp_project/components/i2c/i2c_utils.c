@@ -1,10 +1,16 @@
-#include "i2c_utils.h"
+#include <stdio.h>
 #include "esp_log.h"
+#include "i2c_utils.h"
 
 static const char *TAG = "i2c_utils";
 
-esp_err_t i2c_master_scan(i2c_bus_t *bus, uint32_t timeout_ms)
+void i2c_master_scan(i2c_bus_t *bus, uint32_t timeout_ms)
 {
+    if (!bus->is_initialized) {
+        ESP_LOGW(TAG, "I2C bus is not initialized, cannot perform scan");
+        return;
+    }
+
     esp_err_t ret = ESP_FAIL;
     uint8_t found_devices[128];
     int found_count = 0;
@@ -28,20 +34,21 @@ esp_err_t i2c_master_scan(i2c_bus_t *bus, uint32_t timeout_ms)
     else {
         printf("No I2C devices found.\n");
     }
-
-    return ESP_OK;
 }
 
 bool i2c_is_device_connected(i2c_bus_t *bus, uint8_t addr, uint32_t timeout_ms)
 {
-    esp_err_t ret = ESP_FAIL;
+    if (!bus->is_initialized) {
+        ESP_LOGW(TAG, "I2C bus is not initialized, cannot check device");
+        return false;
+    }
 
-    ret = i2c_master_probe(bus->handle, addr, timeout_ms);
+    esp_err_t ret = i2c_master_probe(bus->handle, addr, timeout_ms);
     if (ret == ESP_OK) {
-        ESP_LOGI(TAG, "Device found at address: 0x%02x", addr);
+        printf("Device found at address: 0x%02x\n", addr);
         return true;
     } else {
-        ESP_LOGI(TAG, "No device found at address: 0x%02x", addr);
+        printf("No device found at address: 0x%02x\n", addr);
         return false;
     }
 }

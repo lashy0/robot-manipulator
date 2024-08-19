@@ -11,9 +11,8 @@
  *
  * @param[in] bus Pointer to the I2C bus structure
  * @param[in] timeout_ms Timeout in milliseconds for each device probe
- * @return ESP_OK if the scan completes successfully, or an error code
  */
-esp_err_t i2c_master_scan(i2c_bus_t *bus, uint32_t timeout_ms);
+void i2c_master_scan(i2c_bus_t *bus, uint32_t timeout_ms);
 
 /**
  * @brief Check if an I2C device is connected at a specific address
@@ -28,4 +27,4 @@ esp_err_t i2c_master_scan(i2c_bus_t *bus, uint32_t timeout_ms);
  */
 bool i2c_is_device_connected(i2c_bus_t *bus, uint8_t addr, uint32_t timeout_ms);
 
-#endif  // I2C_UTILS_H
+#endif

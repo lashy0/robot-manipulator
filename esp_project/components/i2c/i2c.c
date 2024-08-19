@@ -1,11 +1,8 @@
-#include "i2c.h"
 #include "esp_log.h"
+#include "i2c.h"
 
 static const char *TAG = "i2c";
 
-/**
- * @brief Initialize the I2C master bus
- */
 esp_err_t i2c_master_init(i2c_bus_t *bus, const i2c_config_bus_t *config)
 {
     if (bus->is_initialized) {
@@ -38,14 +35,10 @@ esp_err_t i2c_master_init(i2c_bus_t *bus, const i2c_config_bus_t *config)
     return ESP_OK;
 }
 
-/**
- * @brief Deinitialize the I2C master bus
- */
 void i2c_master_deinit(i2c_bus_t *bus)
 {
     if (!bus->is_initialized) {
         ESP_LOGW(TAG, "I2C bus is not initialized");
-        return;
     }
 
     esp_err_t ret = i2c_del_master_bus(bus->handle);
