@@ -1,3 +1,3 @@
-idf_component_register(SRCS "main.c"
+idf_component_register(SRCS "servo_angle_script.c"
                     INCLUDE_DIRS "."
-                    REQUIRES i2c pca9685 acs712 servo)
+                    REQUIRES vfs i2c pca9685 acs712 servo)
