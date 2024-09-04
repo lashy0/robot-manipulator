@@ -135,7 +135,6 @@ void app_main(void) {
 
     pca9685_set_pwm_freq(&pca9685, 50);
 
-    // Initialize the servo (on channel 0, with a max angle of 180 degrees)
     servo_init(&servo, pca9685, 10, 180);
 
     // Initialize ACS712 current sensor
@@ -158,6 +157,5 @@ void app_main(void) {
 
     esp_vfs_usb_serial_jtag_use_driver();
 
-    // Create task for receiving data
     xTaskCreate(Receive_callback, "USB Serial Receive Callback", 8192, NULL, 5, NULL);
 }

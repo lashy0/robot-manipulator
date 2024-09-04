@@ -1,6 +1,5 @@
 import serial
 import time
-import time
 from PyQt5.QtWidgets import (
     QWidget, QSlider, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QComboBox
 )
@@ -85,7 +84,7 @@ class ServoControl(QWidget):
     def __update_servo(self, servo, angle):
         # Отправка значений угла на esp32c3
         if self.ser is not None and self.ser.is_open:
-            command_str = f"{servo}, {angle}"
+            command_str = f"{servo} {angle}"
             self.ser.write(command_str.encode('utf-8'))
             print(f"Sent: {command_str.strip()}")
 
