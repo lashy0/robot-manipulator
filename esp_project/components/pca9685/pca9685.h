@@ -38,6 +38,7 @@ typedef struct {
 
 typedef struct {
     i2c_master_dev_handle_t i2c_dev;
+    uint32_t oscillator_freq;
     bool is_initialized;
 } pca9685_t;
 
@@ -118,6 +119,8 @@ esp_err_t pca9685_get_pwm(pca9685_t *handle, uint8_t channel, uint16_t *on_time,
  */
 esp_err_t pca9685_set_pwm_freq(pca9685_t *handle, float freq);
 
+esp_err_t pca9685_set_ext_clk(pca9685_t *handle, uint8_t prescale);
+
 /**
  * @brief Reset the PCA9685 device
  * 
@@ -155,5 +158,11 @@ esp_err_t pca9685_wake(pca9685_t *handle);
  * Something is wrong with the implementation
  */
 // void pca9685_deinit(pca9685_t *handle);
+
+void pca9685_set_osc_freq(pca9685_t *handle, uint32_t freq);
+
+void pca9685_get_osc_freq(pca9685_t *handle, uint32_t *freq);
+
+esp_err_t pca9685_get_prescale(pca9685_t *handle, uint8_t *data);
 
 #endif

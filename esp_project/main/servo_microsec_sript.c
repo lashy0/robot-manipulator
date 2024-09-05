@@ -30,21 +30,21 @@ acs712_t acs712;
 int offset_voltage;
 
 // Function to control the servo based on input angle and measure the current
-static void set_servo_angle_and_measure_current(uint8_t channel, float angle) {
+static void set_servo_microsec_and_measure_current(uint8_t channel, uint16_t microsec) {
     float current;
     int raw;
 
     servo.channel = channel;
 
     // Set the angle of the servo
-    if (servo_set_angle(&servo, angle) == ESP_OK) {
-        printf("Servo on channel %d set to angle: %.2f degrees\n", channel, angle);
+    if (servo_set_microsec(&servo, microsec) == ESP_OK) {
+        printf("Servo on channel %d set to microsec: %d degrees\n", channel, microsec);
         
         acs712_read_raw(&acs712, &raw);
         acs712_raw_to_current(&acs712, &current, offset_voltage, raw);
         printf("Measured current: %.2f A\n", current);
     } else {
-        printf("Failed to set servo angle on channel %d\n", channel);
+        printf("Failed to set servo microsec on channel %d\n", channel);
     }
 }
 
@@ -73,16 +73,16 @@ static void Receive_callback(void *argument) {
 
                     // Parse the input channel and angle
                     uint8_t channel;
-                    float angle;
-                    if (sscanf(input_buffer, "%hhu %f", &channel, &angle) == 2) {
-                        if (angle >= 0 && angle <= servo.max_angle) {
-                            set_servo_angle_and_measure_current(channel, angle);
+                    uint16_t microsec;
+                    if (sscanf(input_buffer, "%hhu %hu", &channel, &microsec) == 2) {
+                        if (microsec >= 500 && microsec <= 2500) {
+                            set_servo_microsec_and_measure_current(channel, microsec);
                         } else {
                             printf("Invalid angle. Please enter a value between 0 and %.2f\n", servo.max_angle);
                         }
                     }
                     else {
-                        printf("Invalid input. Please enter in format: <channel> <angle>\n");
+                        printf("Invalid input. Please enter in format: <channel> <microsec>\n");
                     }
                     
 

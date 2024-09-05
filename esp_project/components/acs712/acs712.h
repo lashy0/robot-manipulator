@@ -114,4 +114,6 @@ esp_err_t acs712_raw_to_voltage(acs712_t *acs712, int *data, int raw);
  */
 esp_err_t acs712_raw_to_current(acs712_t *acs712, float *data, float offset_voltage, int raw);
 
+void acs712_print_data(acs712_t *acs712, int offset_voltage);
+
 #endif

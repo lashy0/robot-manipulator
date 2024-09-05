@@ -86,7 +86,7 @@ class ServoControl(QWidget):
     
     def __update_servo(self, pwm_id: int, angle: int) -> None:
         if self.device and self.device.is_connected():
-            command_str = f"{pwm_id} {angle}"
+            command_str = f"{pwm_id} {angle}\n"
             self.device.send_data(command_str)
             print(f"Sent: {command_str.strip()}")
 

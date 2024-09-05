@@ -39,4 +39,6 @@ esp_err_t servo_init(servo_t *servo, pca9685_t handle, uint8_t channel, float ma
  */
 esp_err_t servo_set_angle(servo_t *servo, float angle);
 
+esp_err_t servo_set_microsec(servo_t *servo, uint16_t microsec);
+
 #endif

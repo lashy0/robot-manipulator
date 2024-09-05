@@ -217,3 +217,25 @@ esp_err_t acs712_raw_to_current(acs712_t *acs712, float *data, float offset_volt
 
     return ESP_OK;
 }
+
+void acs712_print_data(acs712_t *acs712, int offset_voltage)
+{
+    esp_err_t ret;
+    int raw;
+    
+    ret = acs712_read_raw(acs712, &raw);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "failed to read raw");
+    }
+
+    int voltage;
+    ret = adc_cali_raw_to_voltage(acs712->cali_handle, raw, &voltage);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage");
+    }
+
+    float current;
+    current = (float)(voltage - offset_voltage) / acs712->sensitivity;
+
+    printf("Raw: %d\tVoltage: %d mV\tCurrent: %2f A\n", raw, voltage, current);
+}

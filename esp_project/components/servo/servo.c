@@ -19,6 +19,7 @@ esp_err_t servo_init(servo_t *servo, pca9685_t handle, uint8_t channel, float ma
     return ESP_OK;
 }
 
+// TODO: проверить расчет формулы для получения значения из угла
 esp_err_t servo_set_angle(servo_t *servo, float angle)
 {
     if (!servo || angle < 0.0 || angle > servo->max_angle) {
@@ -38,5 +39,35 @@ esp_err_t servo_set_angle(servo_t *servo, float angle)
     }
 
     ESP_LOGI(TAG, "Servo on channel %d set to angle %.2f", servo->channel, angle);
+    return ESP_OK;
+}
+
+esp_err_t servo_set_microsec(servo_t *servo, uint16_t microsec)
+{
+    if (microsec < SERVO_MIN_PULSE_WIDTH) microsec = SERVO_MIN_PULSE_WIDTH;
+    if (microsec > SERVO_MAX_PULSE_WIDTH) microsec = SERVO_MAX_PULSE_WIDTH;
+
+    esp_err_t ret;
+    float pulse_width = microsec;
+    float pulselength = 1000000;
+    uint8_t prescale;
+    uint32_t oscillator_freq;
+
+    pca9685_get_prescale(&servo->pca9685_handle, &prescale);
+    pca9685_get_osc_freq(&servo->pca9685_handle, &oscillator_freq);
+
+    prescale += 1;
+    pulselength *= prescale;
+    pulselength /= oscillator_freq;
+
+    pulse_width /= pulselength;
+
+    ret = pca9685_set_pwm(&servo->pca9685_handle, servo->channel, 0, pulse_width);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set PWM for channek %d", servo->channel);
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "Servo on channel %d set to microsec %df", servo->channel, microsec);
     return ESP_OK;
 }

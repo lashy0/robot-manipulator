@@ -67,11 +67,18 @@ esp_err_t pca9685_init(pca9685_config_t *config, pca9685_t *handle)
         return ret;
     }
 
+    pca9685_set_osc_freq(handle, FREQUENCY_OSCILLATOR);
+
+    // TODO: добавить условие с инициализацией prescale
+    pca9685_set_pwm_freq(handle, 1000);
+
+
     ESP_LOGI(TAG, "PCA9685 initialized successfully");
 
     return ESP_OK;
 }
 
+// TODO: можно убрать & 0xFF
 esp_err_t pca9685_set_pwm(pca9685_t *handle, uint8_t channel, uint16_t on_time, uint16_t off_time)
 {
     esp_err_t ret;
@@ -105,6 +112,9 @@ esp_err_t pca9685_get_pwm(pca9685_t *handle, uint8_t channel, uint16_t *on_data,
         ESP_LOGE(TAG, "Failed to read PWM register");
         return ret;
     }
+
+    *on_data = (data[1] << 8) | data[0];
+    *off_data = (data[3] << 8) | data[2];
 
     return ESP_OK;
 }
@@ -173,8 +183,12 @@ esp_err_t pca9685_set_pwm_freq(pca9685_t *handle, float freq)
     esp_err_t ret;
     uint8_t old_mode;
     uint8_t new_mode;
+    
+    // ???
+    if (freq < 1) freq = 1;
+    if (freq > 3500) freq = 3500;
 
-    float prescaleval = (uint8_t)(FREQUENCY_OSCILLATOR / (4096 * freq)) - 1;
+    float prescaleval = (uint8_t)((handle->oscillator_freq / (4096.0 * freq)) + 0.5) - 1;
     if (prescaleval < PCA9685_PRESCALE_MIN) prescaleval = PCA9685_PRESCALE_MIN;
     if (prescaleval > PCA9685_PRESCALE_MAX) prescaleval = PCA9685_PRESCALE_MAX;
     uint8_t prescale = (uint8_t)prescaleval;
@@ -185,7 +199,7 @@ esp_err_t pca9685_set_pwm_freq(pca9685_t *handle, float freq)
         return ret;
     }
 
-    new_mode = (old_mode &~MODE1_RESTART) | MODE1_SLEEP;
+    new_mode = (old_mode & ~MODE1_RESTART) | MODE1_SLEEP;
     ret = pca9685_write(handle, PCA9685_MODE1, new_mode);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set sleep mode");
@@ -206,11 +220,56 @@ esp_err_t pca9685_set_pwm_freq(pca9685_t *handle, float freq)
 
     ret = pca9685_write(handle, PCA9685_MODE1, old_mode | MODE1_RESTART | MODE1_AI);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to enable auto-increment mode");
+        ESP_LOGE(TAG, "Failed to set MODE1 register to tuen on auto increment");
         return ret;
     }
 
-    ESP_LOGI(TAG, "PWM frequency set to %.2f Hz", freq);
+    ESP_LOGI(TAG, "PWM frequency set to %.2f", freq);
+
+    return ESP_OK;
+
+}
+
+esp_err_t pca9685_set_ext_clk(pca9685_t *handle, uint8_t prescale)
+{
+    esp_err_t ret;
+    uint8_t old_mode;
+    uint8_t new_mode;
+
+    ret = pca9685_read(handle, PCA9685_MODE1, &old_mode);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read MODE1 register");
+        return ret;
+    }
+
+    new_mode = (old_mode & ~MODE1_RESTART) | MODE1_SLEEP;
+    ret = pca9685_write(handle, PCA9685_MODE1, new_mode);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "failed to set sleep mode");
+        return ret;
+    }
+
+    new_mode |= MODE1_EXTCLK;
+    ret = pca9685_write(handle, PCA9685_MODE1, new_mode);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set external clock");
+        return ret;
+    }
+
+    ret = pca9685_write(handle, PCA9685_PRESCALE, prescale);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set prescale");
+        return ret;
+    }
+
+    new_mode = (new_mode & ~MODE1_SLEEP) | MODE1_RESTART | MODE1_AI;
+    ret = pca9685_write(handle, PCA9685_MODE1, new_mode);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to clear the sleep bit to start");
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "External clock set to %d", prescale);
 
     return ESP_OK;
 }
@@ -238,3 +297,24 @@ void pca9685_deinit(pca9685_t *handle)
     ESP_LOGI(TAG, "PCA9685 deinitialized successfully");
 }
 #endif
+
+void pca9685_set_osc_freq(pca9685_t *handle, uint32_t freq)
+{
+    handle->oscillator_freq = freq;
+}
+
+void pca9685_get_osc_freq(pca9685_t *handle, uint32_t *freq)
+{
+    *freq = handle->oscillator_freq;
+}
+
+esp_err_t pca9685_get_prescale(pca9685_t *handle, uint8_t *data)
+{
+    esp_err_t ret = pca9685_read(handle, PCA9685_PRESCALE, data);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read prescale");
+        return ret;
+    }
+
+    return ESP_OK;
+}
