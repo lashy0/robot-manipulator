@@ -13,6 +13,7 @@ typedef struct {
     float sensitivity;                          /*!< Sensitivity in mV/A based on the specific ACS712 version */
 } acs712_t;
 
+// ОСТАВИТЬ
 /**
  * @brief Initialize the ACS712 current sensor
  * 
@@ -26,6 +27,7 @@ typedef struct {
  */
 esp_err_t acs712_init(acs712_t *acs712, adc_unit_t unit, adc_atten_t attent);
 
+// ОСТАВИТЬ
 /**
  * @brief Deinitialize the ACS712 current sensor
  * 
@@ -36,6 +38,7 @@ esp_err_t acs712_init(acs712_t *acs712, adc_unit_t unit, adc_atten_t attent);
  */
 void acs712_deinit(acs712_t *acs712);
 
+// ДОБАВИТЬ фильтр в нее, надо ли получать не отфильтрованное значение?
 /**
  * @brief Read the raw ADC data from the ACS712 sensor
  * 
@@ -48,6 +51,7 @@ void acs712_deinit(acs712_t *acs712);
  */
 esp_err_t acs712_read_raw(acs712_t *acs712, int *data);
 
+// ОСТАВИТЬ
 /**
  * @brief Read the voltage output from the ACS712 sensor
  * 
@@ -61,6 +65,7 @@ esp_err_t acs712_read_raw(acs712_t *acs712, int *data);
  */
 esp_err_t acs712_read_voltage(acs712_t *acs712, int *data);
 
+// ПРОВЕРИТЬ, что получаемое напяжение в ходе программы не меняется
 /**
  * @brief Calibrate the ACS712 sensor by reading the offset voltage
  * 
@@ -74,6 +79,7 @@ esp_err_t acs712_read_voltage(acs712_t *acs712, int *data);
  */
 esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int *data);
 
+// ДОБАВИТЬ abs для получаемого силы тока
 /**
  * @brief Read the current in amperes from the ACS712 sensor
  * 
@@ -87,6 +93,7 @@ esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int *data);
  */
 esp_err_t acs712_read_current(acs712_t *acs712, float *data, int offset_voltage);
 
+// ОСТАВИТЬ
 /**
  * @brief Convert raw ADC data to voltage
  * 
@@ -100,6 +107,7 @@ esp_err_t acs712_read_current(acs712_t *acs712, float *data, int offset_voltage)
  */
 esp_err_t acs712_raw_to_voltage(acs712_t *acs712, int *data, int raw);
 
+// ОСТАВИТЬ
 /**
  * @brief Convert raw ADC data to current in amperes
  * 

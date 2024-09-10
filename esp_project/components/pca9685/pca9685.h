@@ -42,6 +42,7 @@ typedef struct {
     bool is_initialized;
 } pca9685_t;
 
+// 8 bit
 /**
  * @brief Write a byte of data to a PCA9685 refister
  * 
@@ -52,6 +53,7 @@ typedef struct {
  */
 esp_err_t pca9685_write(pca9685_t *handle, uint8_t reg, uint8_t data);
 
+// 8 bit
 /**
  * @brief Read a byte of data from a PCA9685 register
  * 

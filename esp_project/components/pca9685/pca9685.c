@@ -184,7 +184,7 @@ esp_err_t pca9685_set_pwm_freq(pca9685_t *handle, float freq)
     uint8_t old_mode;
     uint8_t new_mode;
     
-    // ???
+    // TODO: другие по факту часто у чипа от 24 до 15xx
     if (freq < 1) freq = 1;
     if (freq > 3500) freq = 3500;
 

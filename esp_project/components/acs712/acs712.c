@@ -103,6 +103,7 @@ void acs712_deinit(acs712_t *acs712)
     if (acs712->calibrated) {
         acs712_calibration_deinit(acs712->cali_handle);
     }
+    acs712->calibrated = false;
 }
 
 esp_err_t acs712_read_raw(acs712_t *acs712, int *data)
