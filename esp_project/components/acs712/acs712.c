@@ -1,7 +1,29 @@
-#include "acs712.h"
 #include "esp_log.h"
+#include "esp_err.h"
+#include "acs712.h"
 
 static const char *TAG = "acs712";
+
+//
+#define FILTER_SIZE 20
+
+int average_filter(int data) {
+    static int samples[FILTER_SIZE] = {0};
+    static int sum = 0;
+    static int index = 0;
+    static int count = 0;
+
+    sum -= samples[index];
+    samples[index] = data;
+    sum += data;
+
+    index = (index + 1) % FILTER_SIZE;
+    if (count < FILTER_SIZE) {
+        count++;
+    }
+
+    return sum / count;
+}
 
 static bool acs712_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle)
 {
@@ -66,6 +88,34 @@ static void acs712_calibration_deinit(adc_cali_handle_t handle)
 #endif
 }
 
+esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int *data)
+{
+    esp_err_t ret;
+    int raw;
+    int voltage;
+    int samples = 100;
+    int sum = 0;
+
+    for (int i = 0; i < samples; i++) {
+        if (acs712_read_raw(acs712, &raw) == ESP_OK) {
+            sum += raw;
+        }
+        else {
+            return ESP_FAIL;
+        }
+    }
+
+    ret = adc_cali_raw_to_voltage(acs712->cali_handle, sum / samples, &voltage);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
+
+    *data = voltage;
+
+    return ESP_OK;
+}
+
 esp_err_t acs712_init(acs712_t *acs712, adc_unit_t unit, adc_atten_t atten)
 {
     esp_err_t ret;
@@ -77,8 +127,8 @@ esp_err_t acs712_init(acs712_t *acs712, adc_unit_t unit, adc_atten_t atten)
 
     ret = adc_oneshot_new_unit(&init_config, &acs712->adc_handle);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize ADC unit");
-        return ret;
+        ESP_LOGE(TAG, "Failed to initialize ADC unit: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
     }
 
     adc_oneshot_chan_cfg_t config = {
@@ -88,33 +138,61 @@ esp_err_t acs712_init(acs712_t *acs712, adc_unit_t unit, adc_atten_t atten)
 
     ret = adc_oneshot_config_channel(acs712->adc_handle, acs712->adc_channel, &config);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to configure ADC channel");
-        return ret;
+        ESP_LOGE(TAG, "Failed to configure ADC channel: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
     }
 
     acs712->calibrated = acs712_calibration_init(unit, acs712->adc_channel, atten, &acs712->cali_handle);
 
+    ESP_LOGI(TAG, "Start calibrate voltage...");
+    int calibrate_voltage;
+    ret = acs712_calibrate_voltage(acs712, &calibrate_voltage);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to calibrate voltage");
+        return ESP_FAIL;
+    }
+    acs712->calibrate_voltage = calibrate_voltage;
+
     return ESP_OK;
 }
 
-void acs712_deinit(acs712_t *acs712)
+esp_err_t acs712_deinit(acs712_t *acs712)
 {
-    ESP_ERROR_CHECK(adc_oneshot_del_unit(acs712->adc_handle));
+    // TODO: добавить проверку
+    esp_err_t ret;
+
+    ret = adc_oneshot_del_unit(acs712->adc_handle);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to delete ADC unit: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
     if (acs712->calibrated) {
         acs712_calibration_deinit(acs712->cali_handle);
+        acs712->calibrated = false;
     }
-    acs712->calibrated = false;
+
+    // ???
+    acs712->adc_handle = NULL;
+    acs712->cali_handle = NULL;
+    acs712->adc_channel = -1;
+    acs712->sensitivity = 0.0;
+    acs712->calibrate_voltage = 0;
+
+    return ESP_OK;
 }
 
 esp_err_t acs712_read_raw(acs712_t *acs712, int *data)
 {
-    esp_err_t ret = ESP_FAIL;
-    
-    ret = adc_oneshot_read(acs712->adc_handle, acs712->adc_channel, data);
+    esp_err_t ret;
+    int raw;
+
+    ret = adc_oneshot_read(acs712->adc_handle, acs712->adc_channel, &raw);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to read from ADC channel");
-        return ret;
+        ESP_LOGE(TAG, "Failed to read from ADC channel: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
     }
+
+    *data = average_filter(raw);
 
     return ESP_OK;
 }
@@ -123,17 +201,17 @@ esp_err_t acs712_read_voltage(acs712_t *acs712, int *data)
 {
     esp_err_t ret;
     int raw;
+    int voltage;
 
     ret = acs712_read_raw(acs712, &raw);
     if (ret != ESP_OK) {
         return ret;
     }
 
-    int voltage;
     ret = adc_cali_raw_to_voltage(acs712->cali_handle, raw, &voltage);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage");
-        return ret;
+        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
     }
 
     *data = voltage;
@@ -141,102 +219,36 @@ esp_err_t acs712_read_voltage(acs712_t *acs712, int *data)
     return ESP_OK;
 }
 
-esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int *data)
-{
-    esp_err_t ret;
-    int raw;
-    int sum = 0;
-    const int samples = 100;
-
-    for (int i = 0; i < samples; i++) {
-        if (acs712_read_raw(acs712, &raw) == ESP_OK) {
-            sum += raw;
-        }
-        else {
-            return ESP_FAIL;
-        }
-    }
-
-    int average = sum / samples;
-    int voltage;
-    ret = adc_cali_raw_to_voltage(acs712->cali_handle, average, &voltage);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage");
-        return ret;
-    }
-
-    *data = voltage;
-
-    return ESP_OK;
-}
-
-// TODO: брать по модулю data (current)?
-esp_err_t acs712_read_current(acs712_t *acs712, float *data, int offset_voltage)
+esp_err_t acs712_read_current(acs712_t *acs712, float *data)
 {
     esp_err_t ret;
     int voltage;
 
     ret = acs712_read_voltage(acs712, &voltage);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "FAiled to read voltage");
-        return ret;
+        return ESP_FAIL;
     }
 
-    *data = (float)(voltage - offset_voltage) / acs712->sensitivity;
+    *data = (float)(voltage - acs712->calibrate_voltage) / acs712->sensitivity;
 
     return ESP_OK;
 }
 
-esp_err_t acs712_raw_to_voltage(acs712_t *acs712, int *data, int raw)
-{
-    esp_err_t ret;
-
-    int voltage;
-    ret = adc_cali_raw_to_voltage(acs712->cali_handle, raw, &voltage);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage");
-        return ret;
-    }
-
-    *data = voltage;
-
-    return ESP_OK;
-}
-
-// TODO: брать по модулю data (current)?
-esp_err_t acs712_raw_to_current(acs712_t *acs712, float *data, float offset_voltage, int raw)
-{
-    esp_err_t ret;
-
-    int voltage;
-    ret = acs712_raw_to_voltage(acs712, &voltage, raw);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    *data = (float)(voltage - offset_voltage) / acs712->sensitivity;
-
-    return ESP_OK;
-}
-
-void acs712_print_data(acs712_t *acs712, int offset_voltage)
+void acs712_read_data(acs712_t *acs712)
 {
     esp_err_t ret;
     int raw;
-    
-    ret = acs712_read_raw(acs712, &raw);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "failed to read raw");
-    }
-
     int voltage;
+    float current;
+
+    acs712_read_raw(acs712, &raw);
+    
     ret = adc_cali_raw_to_voltage(acs712->cali_handle, raw, &voltage);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage");
+        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
     }
 
-    float current;
-    current = (float)(voltage - offset_voltage) / acs712->sensitivity;
+    current = (float)(voltage - acs712->calibrate_voltage) / acs712->sensitivity;
 
-    printf("Raw: %d\tVoltage: %d mV\tCurrent: %2f A\n", raw, voltage, current);
+    printf("Raw: %d\tVoltage: %d mV\tCalibrate Voltage %d mV\tCurrent: %2f A\n", raw, voltage, acs712->calibrate_voltage, current);
 }

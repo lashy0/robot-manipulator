@@ -11,7 +11,7 @@ void i2c_master_scan(i2c_bus_t *bus, uint32_t timeout_ms)
         return;
     }
 
-    esp_err_t ret = ESP_FAIL;
+    esp_err_t ret;
     uint8_t found_devices[128];
     int found_count = 0;
 
