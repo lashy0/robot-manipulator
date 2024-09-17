@@ -12,3 +12,6 @@ sdkconfig.old
 env
 
 __pycache__
+
+esp_new
+old_commponents

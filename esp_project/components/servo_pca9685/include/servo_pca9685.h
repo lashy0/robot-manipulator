@@ -3,9 +3,9 @@
 
 #include "pca9685.h"
 
-#define SERVO_MAX_ANGLE 180
-#define SERVO_MIN_PULSE_WIDTH_US 500
-#define SERVO_MAX_PULSE_WIDTH_US 2500
+// #define SERVO_MAX_ANGLE 180
+// #define SERVO_MIN_PULSE_WIDTH_US 500
+// #define SERVO_MAX_PULSE_WIDTH_US 2500
 
 typedef struct {
     pca9685_t pca9685;
@@ -36,5 +36,7 @@ esp_err_t servo_pca9685_set_angle(servo_t *servo, float angle, float pwm_freq);
  * @return ESP_OK if successful, or ESP_FAIL
  */
 esp_err_t servo_pca9685_get_angle(servo_t *servo,  float *angle, float pwm_freq);
+
+esp_err_t servo_pca9685_move_smooth(servo_t *servo, float angle, float pwm_freq, float step, int delay);
 
 #endif
