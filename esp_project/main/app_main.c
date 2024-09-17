@@ -8,10 +8,16 @@
 #include "esp_vfs_usb_serial_jtag.h"
 #include "esp_vfs_dev.h"
 
-#include "acs712.h"
-#include "servo.h"
 #include "i2c.h"
 #include "pca9685.h"
+#include "acs712.h"
+#include "servo_pca9685.h"
+#include "arm_robot.h"
+
+#define ACS712_ADC_CHANNEL         ADC_CHANNEL_2
+#define ACS712_ADC_UNIT            ADC_UNIT_1
+#define ACS712_ADC_ATTEN           ADC_ATTEN_DB_12
+#define ACS712_SENSITIVITY         185.0
 
 #define PCA9685_I2C_ADDR           0x40
 
@@ -20,64 +26,95 @@
 #define I2C_MASTER_NUM             I2C_NUM_0
 #define I2C_MASTER_FREQ_HZ         100000
 
-#define ACS712_ADC_CHANNEL         ADC_CHANNEL_2
-#define ACS712_ADC_UNIT            ADC_UNIT_1
-#define ACS712_ADC_ATTEN           ADC_ATTEN_DB_12
-#define ACS712_SENSITIVITY         185.0
-
 #define BUF_SIZE 4096
 #define TASK_STACK_SIZE 4096
 
-static int offset_voltage;
+arm_robot_t robot;
 acs712_t acs712;
-servo_t servo;
 
-// Фильтр ADC RAW, среднее значение 
-#define FILTER_SIZE 20
+void process_command(char *input) {
+    esp_err_t ret;
 
-int average_filter(int data) {
-    static int samples[FILTER_SIZE] = {0};
-    static int sum = 0;
-    static int index = 0;
-    static int count = 0;
+    if (strncmp(input, "GET_ANGLE", 9) == 0) {
+        uint8_t channel;
+        float cur_angle;
 
-    sum -= samples[index];
-    samples[index] = data;
-    sum += data;
+        // TODO: получше решение для получения значений с USB Serial JTAG
+        char subbuff[10];
+        memcpy(subbuff, &input[9], 9);
+        subbuff[10] = '\0';
 
-    index = (index + 1) % FILTER_SIZE;
-    if (count < FILTER_SIZE) {
-        count++;
+        sscanf(subbuff, "%hhu", &channel);
+
+        // TODO: как то избавиться от такой конструкции
+        if (robot.base_servo.channel == channel) {
+            ret = servo_pca9685_get_angle(&robot.base_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Base (pwm 10) servo angle: %.2f\n", cur_angle);
+        }
+        else if (robot.shoulder_servo.channel == channel) {
+            ret = servo_pca9685_get_angle(&robot.shoulder_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Shoulder (pwm 11) servo angle: %.2f\n", cur_angle);
+        }
+        else if (robot.elbow_servo.channel == channel) {
+            ret = servo_pca9685_get_angle(&robot.elbow_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Elbow (pwm 12) servo angle: %.2f\n", cur_angle);
+        }
+        else if (robot.wrist_rot_servo.channel == channel) {
+            ret = servo_pca9685_get_angle(&robot.wrist_rot_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Wrist rot (pwm 13) servo angle: %.2f\n", cur_angle);
+        }
+        else if (robot.wrist_ver_servo.channel == channel) {
+            ret = servo_pca9685_get_angle(&robot.wrist_ver_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Wrist ver (pwm 14) servo angle: %.2f\n", cur_angle);
+        }
+        else if (robot.gripper_servo.channel == channel) {
+            ret = servo_pca9685_get_angle(&robot.gripper_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Gripper (pwm 15) servo angle: %.2f\n", cur_angle);
+        }
+        else {
+            printf("None\n");
+        }
+    }
+    if (strncmp(input, "SET_ANGLE", 9) == 0) {
+        uint8_t channel;
+        float angle;
+
+        char subbuff[10];
+        memcpy(subbuff, &input[9], 9);
+        subbuff[10] = '\0';
+
+        sscanf(subbuff, "%hhu %f", &channel, &angle);
+        printf("angle: %.2f\n", angle);
+
+        if (robot.base_servo.channel == channel) {
+            ret = servo_pca9685_move_smooth(&robot.base_servo, angle, PWM_FREQUENCY, 2, 50);
+        }
+        else if (robot.shoulder_servo.channel == channel) {
+            ret = servo_pca9685_move_smooth(&robot.shoulder_servo, angle, PWM_FREQUENCY, 2, 50);
+        }
+        else if (robot.elbow_servo.channel == channel) {
+            ret = servo_pca9685_move_smooth(&robot.elbow_servo, angle, PWM_FREQUENCY, 2, 50);
+        }
+        else if (robot.wrist_rot_servo.channel == channel) {
+            ret = servo_pca9685_move_smooth(&robot.wrist_rot_servo, angle, PWM_FREQUENCY, 2, 50);
+        }
+        else if (robot.wrist_ver_servo.channel == channel) {
+            ret = servo_pca9685_move_smooth(&robot.wrist_ver_servo, angle, PWM_FREQUENCY, 2, 50);
+        }
+        else if (robot.gripper_servo.channel == channel) {
+            ret = servo_pca9685_move_smooth(&robot.gripper_servo, angle, PWM_FREQUENCY, 2, 50);
+        }
+        else {
+            printf("None\n");
+        }
+
+        printf("Servo on channel %d set to angle: %.2f degress\n", channel, angle);     
     }
 
-    return sum / count;
+    printf("Done\n");
 }
 
-// Вывод значений ACS712 с применением фильтра
-void print_data() {
-    int raw_data;
-    acs712_read_raw(&acs712, &raw_data);
-    int filtererd_data = average_filter(raw_data);
-    // int filtererd_data = kalman_update(raw_data);
-
-    int voltage;
-    acs712_raw_to_voltage(&acs712, &voltage, filtererd_data);
-
-    float current;
-    current = (float)(voltage - offset_voltage) / acs712.sensitivity;
-
-    printf("Raw: %d\t Filtered Raw: %d\tVoltage: %d mV\t Offset Voltage: %d mV\tCurrent: %2f A\n", raw_data, filtererd_data, voltage, offset_voltage, current);
-}
-
-static void adc_task(void *pvParameter) {
-	while (1) {
-        print_data();
-		vTaskDelay(250 / portTICK_PERIOD_MS);
-	}
-}
-
-static void usb_serial_task(void *argument) {
-    //
+static void usb_serial_task(void *arg) {
     uint8_t *rxbuf = (uint8_t *)malloc(BUF_SIZE);
     char *input_buffer = (char *)malloc(BUF_SIZE);
 
@@ -89,22 +126,16 @@ static void usb_serial_task(void *argument) {
     size_t bytes_read = 0;
     size_t input_length = 0;
 
-    for(;;) {
+    while(1) {
+        // Read data from USB Serial
         bytes_read = usb_serial_jtag_read_bytes(rxbuf, BUF_SIZE, 10 / portTICK_PERIOD_MS);
 
         if (bytes_read > 0) {
             for (size_t i = 0; i < bytes_read; i++) {
-                if (rxbuf[i] == '\n' || rxbuf[i] == '\r') {
+                if (rxbuf[i] == '\n') {
                     input_buffer[input_length] = '\0';
-                    printf("You entered: %s\n", input_buffer);
 
-                    uint8_t channel;
-                    float angle;
-                    if (sscanf(input_buffer, "%hhu %f", &channel, &angle) == 2) {
-                        printf("Servo on channel %d set to angle: %.2f degrees\n", channel, angle);
-                    }
-
-                    printf("Done\n");
+                    process_command(input_buffer);
 
                     input_length = 0;
                 }
@@ -115,9 +146,6 @@ static void usb_serial_task(void *argument) {
                 }
             }
         }
-        // else {
-        //     printf("No data received\n");
-        // }
 
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }
@@ -126,11 +154,10 @@ static void usb_serial_task(void *argument) {
     free(input_buffer);
 }
 
-void app_main(void)
-{
+void app_main(void) {
     esp_err_t ret;
 
-    // Initialize I2C for PCA9685 (Servo Controller)
+    // Initialize I2C
     i2c_config_bus_t i2c_master_config = {
         .port = I2C_MASTER_NUM,
         .sda_io_num = I2C_MASTER_SDA_IO,
@@ -143,54 +170,49 @@ void app_main(void)
 
     i2c_master_init(&i2c_bus, &i2c_master_config);
 
-    printf("I2C\n");
-    
-    // Initialize PCA9685 for Servo Control
+    // Initialize PCA9685
     pca9685_config_t pca9685_config = {
         .i2c_address = PCA9685_I2C_ADDR,
         .bus_handle = i2c_bus.handle,
         .scl_speed = I2C_MASTER_FREQ_HZ
     };
     
+    // ???
     pca9685_t pca9685 = {
         .is_initialized = false,
     };
 
-    pca9685_init(&pca9685_config, &pca9685);
+    ret = pca9685_init(&pca9685_config, &pca9685);
+    if (ret != ESP_OK) {
+        return;
+    }
+    printf("PCA9685 initialize\n");
 
-    pca9685_set_pwm_freq(&pca9685, 50);
+    ret = pca9685_set_pwm_freq(&pca9685, 50);
+    if (ret != ESP_OK) {
+        return;
+    }
+    printf("PCA9685 set 50 Hz\n");
 
-    printf("PCA9685\n");
-
-    // Initialize ACS712
+    // Initialize ACS712 5A
     acs712.adc_channel = ACS712_ADC_CHANNEL;
     acs712.sensitivity = ACS712_SENSITIVITY;
 
-    acs712_init(&acs712, ACS712_ADC_UNIT, ACS712_ADC_ATTEN);
-
-    int raw;
-    int sum = 0;
-    const int samples = 100;
-
-    for (int i = 0; i < samples; i++) {
-        if (acs712_read_raw(&acs712, &raw) == ESP_OK) {
-            sum += raw;
-        }
-        vTaskDelay(50 / portTICK_PERIOD_MS);
-    }
-
-    int average = sum / samples;
-    ret = acs712_raw_to_voltage(&acs712, &offset_voltage, average);
+    ret = acs712_init(&acs712, ACS712_ADC_UNIT, ACS712_ADC_ATTEN);
     if (ret != ESP_OK) {
-        printf("Failed to convert ADC raw to voltage");
         return;
     }
+    printf("ACS712 5A initialize\n");
 
-    printf("Calibrated offset voltage: %d mV\n", offset_voltage);
+    // Initialize robot
+    arm_robot_init(&robot, pca9685);
 
-    printf("ACS712\n");
-
-    xTaskCreate(adc_task, "adc_task", 4096, NULL, 5, NULL);
+    // Set home state robot
+    // ret = arm_robot_home_state(&robot);
+    // if (ret != ESP_OK) {
+    //     return;
+    // }
+    printf("Arm robot initialize\n");
 
     // Set up USB Serial JTAG
     usb_serial_jtag_driver_config_t usb_serial_jtag_config = {
@@ -202,12 +224,20 @@ void app_main(void)
         return;
     }
 
-    // usb_serial_jtag_vfs_use_driver();
     esp_vfs_usb_serial_jtag_use_driver();
-    printf("Driver initialized successfully");
+    printf("USB Serial JTAG initialize\n");
+    
+    // Main
+    xTaskCreate(usb_serial_task, "USB Serial Task", BUF_SIZE * 2, NULL, 5, NULL);
 
-    // Initialize Servo
-    servo_init(&servo, pca9685, 10, 180);
+    // Deinit
+    // ret = pca9685_deinit(&pca9685);
+    // if (ret != ESP_OK) {
+    //     return;
+    // }
 
-    xTaskCreate(usb_serial_task, "USB Serial Task", 8192, NULL, 5, NULL);
+    // ret = acs712_deinit(&acs712);
+    // if (ret != ESP_OK) {
+    //     return;
+    // }
 }
