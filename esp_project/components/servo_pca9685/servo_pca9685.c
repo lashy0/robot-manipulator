@@ -46,40 +46,67 @@ esp_err_t servo_pca9685_get_angle(servo_t *servo,  float *angle, float pwm_freq)
     pulse_width = pulse_width < 0.0f ? 0.0f : pulse_width;
     *angle = (pulse_width * servo->max_angle) / (servo->max_pulse_width - servo->min_pulse_width);
 
+    // ESP_LOGI(TAG, "pulse: %.2f", pulse_width);
+    // ESP_LOGI(TAG, "on: %d, off: %d", on_time, off_time);
+
     return ESP_OK;
 }
 
-esp_err_t servo_pca9685_move_smooth(servo_t *servo, float angle, float pwm_freq, float step, int delay)
+void servo_pca9685_move_smooth(servo_t *servo, float pwm_freq)
 {
-    if (angle < 0.0f || angle > servo->max_angle) {
+    // TODO: добавить информации о текущих значениях при ошибке
+    if (servo->target_angle < 0.0f || servo->target_angle > servo->max_angle) {
         ESP_LOGE(TAG, "Invalid angle");
-        return ESP_FAIL;
+        return;
+        // return ESP_FAIL;
     }
+
+    // Прверка занят ли серва
+    if (servo->is_busy) {
+        ESP_LOGI(TAG, "Servo [pwm %d] is busy. Target angle update.", servo->channel);
+        return;
+        // return ESP_OK;
+    }
+
+    // Установка флага занятости серва
+    servo->is_busy = true;
+    // ESP_LOGI(TAG, "Servo is busy: %d", servo->is_busy);
 
     float current_angle;
     esp_err_t ret;
 
     ret = servo_pca9685_get_angle(servo, &current_angle, pwm_freq);
     if (ret != ESP_OK) {
-        return ret;
+        servo->is_busy = false; // сброс флага занятости
+        // return ret;
+        return;
     }
 
-    float increment = (angle > current_angle) ? step : -step;
+    // + мб менять при работе серва и текущию скорость?
+    // теперь может меняться в процессе работы серва
+    float increment = (servo->target_angle > current_angle) ? servo->step : -servo->step;
 
-    while ((increment > 0 && current_angle < angle) || (increment < 0 && current_angle > angle)) {
+    while ((increment > 0 && current_angle < servo->target_angle) || (increment < 0 && current_angle > servo->target_angle)) {
         current_angle += increment;
 
-        if ((increment > 0 && current_angle > angle) || (increment < 0 && current_angle < angle)) {
-            current_angle = angle;
+        // проверка, если угол текущий вышел за целевой
+        if ((increment > 0 && current_angle > servo->target_angle) || (increment < 0 && current_angle < servo->target_angle)) {
+            current_angle = servo->target_angle;
         }
 
         ret = servo_pca9685_set_angle(servo, current_angle, pwm_freq);
         if (ret != ESP_OK) {
-            return ret;
+            servo->is_busy = false; // сброс флага занятости
+            // return ret;
+            return;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(delay));
+        // обновление инкремента, если целевой угол изменился
+        increment = (servo->target_angle > current_angle) ? servo->step : -servo->step;
+
+        vTaskDelay(pdMS_TO_TICKS(servo->delay));
     }
 
-    return ESP_OK;
+    servo->is_busy = false; // сброс флага занятости по завершению
+    // return ESP_OK;
 }

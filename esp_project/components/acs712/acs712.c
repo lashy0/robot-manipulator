@@ -1,3 +1,4 @@
+#include<math.h>
 #include "esp_log.h"
 #include "esp_err.h"
 #include "acs712.h"
@@ -229,7 +230,8 @@ esp_err_t acs712_read_current(acs712_t *acs712, float *data)
         return ESP_FAIL;
     }
 
-    *data = (float)(voltage - acs712->calibrate_voltage) / acs712->sensitivity;
+    *data = fabs((float)(voltage - acs712->calibrate_voltage) / acs712->sensitivity);
+    // *data = (float)(voltage - acs712->calibrate_voltage) / acs712->sensitivity;
 
     return ESP_OK;
 }

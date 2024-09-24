@@ -26,14 +26,50 @@
 #define I2C_MASTER_NUM             I2C_NUM_0
 #define I2C_MASTER_FREQ_HZ         100000
 
-#define BUF_SIZE 4096
-#define TASK_STACK_SIZE 4096
+#define BUF_SIZE 128
 
 arm_robot_t robot;
 acs712_t acs712;
 
+static void usb_serial_send_current(void *arg) {
+    while(1) {
+        float current;
+        acs712_read_current(&acs712, &current);
+        char temp_buffer[32];
+
+        int len = snprintf(temp_buffer, sizeof(temp_buffer), "%f\n", current);
+
+        usb_serial_jtag_write_bytes((uint8_t *)temp_buffer, len, pdMS_TO_TICKS(100));
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+void servo_move_task(void *arg) {
+    servo_t *servo = (servo_t *)arg;
+
+    servo_pca9685_move_smooth(servo, PWM_FREQUENCY);
+
+    vTaskDelete(NULL);
+}
+
+void servos_move_task(void *arg) {
+    arm_robot_t *robot = (arm_robot_t *)arg;
+
+    arm_robot_movement(robot);
+
+    vTaskDelete(NULL);
+}
+
+bool get_movement_status() {
+    return robot.is_moving;
+}
+
+// TODO: подумать как лучше организовать прошивки
+// TODO: разделить на две прошивки, одна для работы с движениями, другая тестовая для проверки работы системы
+// TODO: подробней разобраться с task в FreeRTOS
+// TODO: попробовать ускорить получение команды ? т.е. сначало считываем что за команда (до встречи пробела) и уже делаем проверку на нее
 void process_command(char *input) {
-    esp_err_t ret;
 
     if (strncmp(input, "GET_ANGLE", 9) == 0) {
         uint8_t channel;
@@ -41,41 +77,82 @@ void process_command(char *input) {
 
         // TODO: получше решение для получения значений с USB Serial JTAG
         char subbuff[10];
+        // strncpy вместо memcpy?
         memcpy(subbuff, &input[9], 9);
         subbuff[10] = '\0';
 
         sscanf(subbuff, "%hhu", &channel);
 
-        // TODO: как то избавиться от такой конструкции
+        // TODO: переделать
         if (robot.base_servo.channel == channel) {
-            ret = servo_pca9685_get_angle(&robot.base_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Base (pwm 10) servo angle: %.2f\n", cur_angle);
+            servo_pca9685_get_angle(&robot.base_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Base (pwm %d) servo angle: %.2f\n", channel, cur_angle);
         }
         else if (robot.shoulder_servo.channel == channel) {
-            ret = servo_pca9685_get_angle(&robot.shoulder_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Shoulder (pwm 11) servo angle: %.2f\n", cur_angle);
+            servo_pca9685_get_angle(&robot.shoulder_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Shoulder (pwm %d) servo angle: %.2f\n", channel, cur_angle);
         }
         else if (robot.elbow_servo.channel == channel) {
-            ret = servo_pca9685_get_angle(&robot.elbow_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Elbow (pwm 12) servo angle: %.2f\n", cur_angle);
+            servo_pca9685_get_angle(&robot.elbow_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Elbow (pwm %d) servo angle: %.2f\n", channel, cur_angle);
+        }
+        else if (robot.wrist_servo.channel == channel) {
+            servo_pca9685_get_angle(&robot.wrist_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Wrist rot (pwm %d) servo angle: %.2f\n", channel, cur_angle);
         }
         else if (robot.wrist_rot_servo.channel == channel) {
-            ret = servo_pca9685_get_angle(&robot.wrist_rot_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Wrist rot (pwm 13) servo angle: %.2f\n", cur_angle);
-        }
-        else if (robot.wrist_ver_servo.channel == channel) {
-            ret = servo_pca9685_get_angle(&robot.wrist_ver_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Wrist ver (pwm 14) servo angle: %.2f\n", cur_angle);
+            servo_pca9685_get_angle(&robot.wrist_rot_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Wrist ver (pwm %d) servo angle: %.2f\n", channel, cur_angle);
         }
         else if (robot.gripper_servo.channel == channel) {
-            ret = servo_pca9685_get_angle(&robot.gripper_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Gripper (pwm 15) servo angle: %.2f\n", cur_angle);
+            servo_pca9685_get_angle(&robot.gripper_servo, &cur_angle, PWM_FREQUENCY);
+            printf("Gripper (pwm %d) servo angle: %.2f\n", channel, cur_angle);
         }
         else {
             printf("None\n");
         }
     }
-    if (strncmp(input, "SET_ANGLE", 9) == 0) {
+    else if (strncmp(input, "GET_STATUS_MOVING", 17) == 0) {
+        char status_msg[16];
+        snprintf(status_msg, sizeof(status_msg), "STATUS %d\n", get_movement_status());
+        usb_serial_jtag_write_bytes((const uint8_t *)status_msg, strlen(status_msg), pdMS_TO_TICKS(100));
+    }
+    else if (strncmp(input, "SET_ANGLES", 10) == 0) {
+        float angle_base;
+        float angle_shoulder;
+        float angle_elbow;
+        float angle_wrist;
+        float angle_wrist_rot;
+
+        int delay = 20;
+
+        char subbuff[40];
+        memcpy(subbuff, &input[10], 39);
+        subbuff[40] = '\0';
+
+        printf("%s\n", subbuff);
+
+        sscanf(subbuff, "%f %f %f %f %f", &angle_base, &angle_shoulder, &angle_elbow, &angle_wrist, &angle_wrist_rot);
+        // printf("Angle base: %.2f; Angle shoulder: %.2f; Angle elbow: %.2f; Angle wrist: %.2f; Angle wrist rotation: %.2f\n", angle_base, angle_shoulder, angle_elbow, angle_wrist, angle_wrist_rot);
+
+        if (!robot.is_moving) {
+            printf("Settings angles\n");
+
+            robot.base_target_angle = angle_base;
+            robot.shoulder_target_angle = angle_shoulder;
+            robot.elbow_target_angle = angle_elbow;
+            robot.wrist_target_angle = angle_wrist;
+            robot.wrist_rot_target_angle = angle_wrist_rot;
+            robot.gripper_target_angle = 140;
+            robot.delay = delay;
+
+            xTaskCreate(servos_move_task, "servos move task", 4096, &robot, 2, NULL);
+        }
+        else {
+            printf("None\n");
+        }
+    }
+    else if (strncmp(input, "SET_ANGLE", 9) == 0) {
         uint8_t channel;
         float angle;
 
@@ -84,44 +161,117 @@ void process_command(char *input) {
         subbuff[10] = '\0';
 
         sscanf(subbuff, "%hhu %f", &channel, &angle);
-        printf("angle: %.2f\n", angle);
+        // printf("Setting angle %.2f on channel %d\n", angle, channel);
 
+        float step = 1.5;
+        int delay = 40;
+
+        // TODO: переделать
         if (robot.base_servo.channel == channel) {
-            ret = servo_pca9685_move_smooth(&robot.base_servo, angle, PWM_FREQUENCY, 2, 50);
+            if (!robot.base_servo.is_busy) {
+                // printf("Setting angle %.2f on channel %d\n", angle, channel);
+                // servo_pca9685_move_smooth(&robot.base_servo, angle, PWM_FREQUENCY, step, delay);
+
+                robot.base_servo.step = step;
+                robot.base_servo.delay = delay;
+                robot.base_servo.target_angle = angle;
+                xTaskCreate(servo_move_task, "base servo move task", 4096, &robot.base_servo, 1, NULL);
+            }
+            else {
+                robot.base_servo.target_angle = angle;
+                // printf("Updating target angle for base servo to %.2f\n", angle);
+            }
         }
         else if (robot.shoulder_servo.channel == channel) {
-            ret = servo_pca9685_move_smooth(&robot.shoulder_servo, angle, PWM_FREQUENCY, 2, 50);
+            if (!robot.shoulder_servo.is_busy) {
+                // printf("Setting angle %.2f on channel %d\n", angle, channel);
+
+                robot.shoulder_servo.step = step;
+                robot.shoulder_servo.delay = delay;
+                robot.shoulder_servo.target_angle = angle;
+                xTaskCreate(servo_move_task, "shoulder servo move task", 4096, &robot.shoulder_servo, 1, NULL);
+            }
+            else {
+                robot.shoulder_servo.target_angle = angle;
+                // printf("Updating target angle for shoulder servo to %.2f\n", angle);
+            }
         }
         else if (robot.elbow_servo.channel == channel) {
-            ret = servo_pca9685_move_smooth(&robot.elbow_servo, angle, PWM_FREQUENCY, 2, 50);
+            if (!robot.elbow_servo.is_busy) {
+                // printf("Setting angle %.2f on channel %d\n", angle, channel);
+
+                robot.elbow_servo.step = step;
+                robot.elbow_servo.delay = delay;
+                robot.elbow_servo.target_angle = angle;
+                xTaskCreate(servo_move_task, "elbow servo move task", 4096, &robot.elbow_servo, 1, NULL);
+            }
+            else {
+                robot.elbow_servo.target_angle = angle;
+                // printf("Updating target angle for elbow servo to %.2f\n", angle);
+            }
+        }
+        else if (robot.wrist_servo.channel == channel) {
+            if (!robot.wrist_servo.is_busy) {
+                // printf("Setting angle %.2f on channel %d\n", angle, channel);
+
+                robot.wrist_servo.step = step;
+                robot.wrist_servo.delay = delay;
+                robot.wrist_servo.target_angle = angle;
+                xTaskCreate(servo_move_task, "wrist servo move task", 4096, &robot.wrist_servo, 1, NULL);
+            }
+            else {
+                robot.wrist_servo.target_angle = angle;
+                // printf("Updating target angle for wrist servo to %.2f\n", angle);
+            }
         }
         else if (robot.wrist_rot_servo.channel == channel) {
-            ret = servo_pca9685_move_smooth(&robot.wrist_rot_servo, angle, PWM_FREQUENCY, 2, 50);
-        }
-        else if (robot.wrist_ver_servo.channel == channel) {
-            ret = servo_pca9685_move_smooth(&robot.wrist_ver_servo, angle, PWM_FREQUENCY, 2, 50);
+            if (!robot.wrist_rot_servo.is_busy) {
+                // printf("Setting angle %.2f on channel %d\n", angle, channel);
+
+                robot.wrist_rot_servo.step = step;
+                robot.wrist_rot_servo.delay = delay;
+                robot.wrist_rot_servo.target_angle = angle;
+                xTaskCreate(servo_move_task, "wrist rotation servo move task", 4096, &robot.wrist_rot_servo, 1, NULL);
+            }
+            else {
+                robot.wrist_rot_servo.target_angle = angle;
+                // printf("Updating target angle for wrist rotation servo to %.2f\n", angle);
+            }
         }
         else if (robot.gripper_servo.channel == channel) {
-            ret = servo_pca9685_move_smooth(&robot.gripper_servo, angle, PWM_FREQUENCY, 2, 50);
+            if (!robot.gripper_servo.is_busy) {
+                // printf("Setting angle %.2f on channel %d\n", angle, channel);
+
+                robot.gripper_servo.step = step;
+                robot.gripper_servo.delay = delay;
+                robot.gripper_servo.target_angle = angle;
+                xTaskCreate(servo_move_task, "gripper servo move task", 4096, &robot.gripper_servo, 1, NULL);
+            }
+            else {
+                robot.gripper_servo.target_angle = angle;
+                // printf("Updating target angle for gripper servo to %.2f\n", angle);
+            }
         }
         else {
             printf("None\n");
         }
 
-        printf("Servo on channel %d set to angle: %.2f degress\n", channel, angle);     
+        // printf("Servo on channel %d set to angle: %.2f degress\n", channel, angle);
     }
-
-    printf("Done\n");
 }
 
+// TODO: подобрать параметры, чтобы быстрее считывала или не надо так делать?
 static void usb_serial_task(void *arg) {
-    uint8_t *rxbuf = (uint8_t *)malloc(BUF_SIZE);
-    char *input_buffer = (char *)malloc(BUF_SIZE);
+    // uint8_t *rxbuf = (uint8_t *)malloc(BUF_SIZE);
+    // char *input_buffer = (char *)malloc(BUF_SIZE);
 
-    if (rxbuf == NULL || input_buffer == NULL) {
-        printf("Failed to allocate memory!\n");
-        return;
-    }
+    // if (rxbuf == NULL || input_buffer == NULL) {
+    //     printf("Failed to allocate memory!\n");
+    //     return;
+    // }
+
+    uint8_t rxbuf[BUF_SIZE];
+    char input_buffer[BUF_SIZE];
 
     size_t bytes_read = 0;
     size_t input_length = 0;
@@ -137,23 +287,25 @@ static void usb_serial_task(void *arg) {
 
                     process_command(input_buffer);
 
+                    // printf("Done\n");
+
                     input_length = 0;
                 }
+                else if (input_length < BUF_SIZE - 1) {
+                    input_buffer[input_length++] = rxbuf[i];
+                }
                 else {
-                    if (input_length < BUF_SIZE - 1) {
-                        input_buffer[input_length++] = rxbuf[i];
-                    }
+                    printf("Input buffer overflow, cleaaring buffer\n");
+                    input_length = 0;
                 }
             }
         }
 
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
-
-    free(rxbuf);
-    free(input_buffer);
 }
 
+// TODO: раскидать по функциям инициализации
 void app_main(void) {
     esp_err_t ret;
 
@@ -208,10 +360,10 @@ void app_main(void) {
     arm_robot_init(&robot, pca9685);
 
     // Set home state robot
-    // ret = arm_robot_home_state(&robot);
-    // if (ret != ESP_OK) {
-    //     return;
-    // }
+    ret = arm_robot_home_state(&robot);
+    if (ret != ESP_OK) {
+        return;
+    }
     printf("Arm robot initialize\n");
 
     // Set up USB Serial JTAG
@@ -228,7 +380,9 @@ void app_main(void) {
     printf("USB Serial JTAG initialize\n");
     
     // Main
-    xTaskCreate(usb_serial_task, "USB Serial Task", BUF_SIZE * 2, NULL, 5, NULL);
+    xTaskCreate(usb_serial_task, "USB Serial Task", 4096, NULL, 5, NULL);
+
+    // xTaskCreate(usb_serial_send_current, "USB Serial send current Task", TASK_STACK_SIZE * 2, NULL, 5, NULL);
 
     // Deinit
     // ret = pca9685_deinit(&pca9685);

@@ -5,10 +5,18 @@ from ..utils import SerialDevice
 from ..utils import Logger
 
 
-def send_angle_to_esp32(device: SerialDevice, cmd: str, channel: int, angle: float):
-    command = f"{cmd} {channel} {angle}\n"
+def clear_buffer(device: SerialDevice) -> None:
+    while True:
+        data = device.read_data()
+        if not data:
+            break
+    
+    print("Buffer clear")
+
+
+def send_angles_to_esp32(device: SerialDevice, cmd: str, base: float, shoulder: float, elbow: float, wrist: float, wrist_rot: float):
+    command = f"{cmd} {base} {shoulder} {elbow} {wrist} {wrist_rot}\n"
     device.write_data(command)
-    print(f"Sent: {command.strip()}")
 
     while True:
         response = device.read_data()
@@ -16,7 +24,24 @@ def send_angle_to_esp32(device: SerialDevice, cmd: str, channel: int, angle: flo
             if "Done" in response:
                 print("Done")
                 break
-            print(f"Received: {response}")
+            # print(f"Received: {response}")
+        else:
+            print("No response received")
+            break
+
+
+def send_angle_to_esp32(device: SerialDevice, cmd: str, channel: int, angle: float):
+    command = f"{cmd} {channel} {angle}\n"
+    device.write_data(command)
+    # print(f"Sent: {command.strip()}")
+
+    while True:
+        response = device.read_data()
+        if response:
+            if "Done" in response:
+                print("Done")
+                break
+            # print(f"Received: {response}")
         else:
             print("No response received")
             break
@@ -32,12 +57,13 @@ def get_angle_to_esp32(device: SerialDevice, cmd: str, channel: int):
             if "Done" in response:
                 print("Done")
                 break
-            print(f"Received: {response}")
+            # print(f"Received: {response}")
         else:
             print("No response received")
             break
 
 
+# TODO: снова проблема с получением обратно значений от esp32 (отставание появляется)
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="")
     parser.add_argument(
@@ -64,6 +90,8 @@ if __name__ == "__main__":
         exit()
     
     while True:
+        # clear_buffer(device)
+
         try:
             input_data = input("Enter command (SET/GET_) servo channel (0-15) and angle (0 to 180 degrees): ")
             commands = input_data.split()
@@ -83,6 +111,14 @@ if __name__ == "__main__":
                     get_angle_to_esp32(device, command, channel)
                 else:
                     print("Please enter a valid channel (0 to 15)")
+            elif command == "SET_ANGLES":
+                angle_base = float(commands[1])
+                angle_shoulder = float(commands[2])
+                angle_elbow = float(commands[3])
+                angle_wrist= float(commands[4])
+                angle_wrist_rot = float(commands[5])
+
+                send_angles_to_esp32(device, command, angle_base, angle_shoulder, angle_elbow, angle_wrist, angle_wrist_rot)
             else:
                 print("Please enter a valid command")
 

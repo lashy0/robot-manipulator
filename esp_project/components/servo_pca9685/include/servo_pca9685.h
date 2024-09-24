@@ -3,16 +3,16 @@
 
 #include "pca9685.h"
 
-// #define SERVO_MAX_ANGLE 180
-// #define SERVO_MIN_PULSE_WIDTH_US 500
-// #define SERVO_MAX_PULSE_WIDTH_US 2500
-
 typedef struct {
     pca9685_t pca9685;
     uint16_t min_pulse_width;
     uint16_t max_pulse_width;
     float max_angle;
     uint8_t channel;
+    bool is_busy; // флаг того что серво уже выполняет выставление угла
+    float target_angle; // целевой угол для плавного движения
+    float step;
+    int delay;
 } servo_t;
 
 /**
@@ -37,6 +37,6 @@ esp_err_t servo_pca9685_set_angle(servo_t *servo, float angle, float pwm_freq);
  */
 esp_err_t servo_pca9685_get_angle(servo_t *servo,  float *angle, float pwm_freq);
 
-esp_err_t servo_pca9685_move_smooth(servo_t *servo, float angle, float pwm_freq, float step, int delay);
+void servo_pca9685_move_smooth(servo_t *servo, float pwm_freq);
 
 #endif
