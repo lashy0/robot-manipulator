@@ -2,6 +2,7 @@
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_timer.h"
 #include "servo_pca9685.h"
 
 static const char *TAG = "servo_pca9685";
