@@ -7,6 +7,8 @@
 
 static const char *TAG = "servo_pca9685";
 
+static esp_timer_handle_t move_timer;
+
 esp_err_t servo_pca9685_set_angle(servo_t *servo, float angle, float pwm_freq)
 {
     if (angle < 0.0f || angle > servo->max_angle) {
@@ -51,6 +53,86 @@ esp_err_t servo_pca9685_get_angle(servo_t *servo,  float *angle, float pwm_freq)
     // ESP_LOGI(TAG, "on: %d, off: %d", on_time, off_time);
 
     return ESP_OK;
+}
+
+static void move_timer_callback(void *arg)
+{
+    servo_t *servo = (servo_t *)arg;
+    float current_angle;
+    esp_err_t ret;
+
+    ret = servo_pca9685_get_angle(servo, &current_angle, 50);
+    if (ret != ESP_OK) {
+        esp_timer_stop(move_timer);
+        servo->is_busy = false;
+        return;
+    }
+
+    float increment = (servo->target_angle > current_angle) ? servo->step : -servo->step;
+
+    current_angle += increment;
+
+    // Проверка достигли целевого угла
+    if ((increment > 0 && current_angle > servo->target_angle) || (increment < 0 && current_angle < servo->target_angle)) {
+        current_angle = servo->target_angle;
+        servo_pca9685_set_angle(servo, current_angle, 50);
+        ESP_LOGI(TAG, "Moving to angle: %.2f; Target angle: %.2f", current_angle, servo->target_angle);
+        esp_timer_stop(move_timer);
+        servo->is_busy = false;
+        return;
+    }
+
+    // Изменение угла
+    // servo->current_angle += increment;
+    ret = servo_pca9685_set_angle(servo, current_angle, 50);
+    if (ret != ESP_OK) {
+        esp_timer_stop(move_timer);
+        servo->is_busy = false;
+        return;
+    }
+
+    ESP_LOGI(TAG, "Moving to angle: %.2f; Target_angle: %.2f", current_angle, servo->target_angle);
+}
+
+void servo_pca9685_move_smoth_timer(servo_t *servo)
+{
+    // Прверка занят ли серва
+    if (servo->is_busy) {
+        ESP_LOGI(TAG, "Servo [pwm %d] is busy. Target angle update.", servo->channel);
+        return;
+    }
+
+    servo->is_busy = true;
+
+    // float current_angle;
+
+    // esp_err_t ret = servo_pca9685_get_angle(servo, &current_angle, 50);
+    // if (ret != ESP_OK) {
+    //     servo->is_busy = false;
+    //     return;
+    // }
+
+    // servo->current_angle = current_angle;
+
+    // Настройка таймера
+    const esp_timer_create_args_t timer_args = {
+        .callback = &move_timer_callback,
+        .arg = (void *)servo,
+        .name = "move_servo"
+    };
+
+    if (esp_timer_create(&timer_args, &move_timer) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create move timer");
+        servo->is_busy = false;
+        return;
+    }
+
+    if (esp_timer_start_periodic(move_timer, servo->delay) != ESP_OK) {
+        ESP_LOGE(TAG, "failed to start move timer");
+        esp_timer_delete(move_timer);
+        servo->is_busy = false;
+        return;
+    }
 }
 
 void servo_pca9685_move_smooth(servo_t *servo, float pwm_freq)

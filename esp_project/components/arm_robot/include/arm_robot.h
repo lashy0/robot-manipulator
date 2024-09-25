@@ -101,4 +101,6 @@ esp_err_t arm_robot_home_state(arm_robot_t *robot);
  */
 void arm_robot_movement(arm_robot_t *robot);
 
+void arm_robot_movement_timer(arm_robot_t *robot);
+
 #endif

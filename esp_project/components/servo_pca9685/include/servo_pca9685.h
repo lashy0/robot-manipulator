@@ -13,6 +13,7 @@ typedef struct {
     float target_angle; // целевой угол для плавного движения
     float step;
     int delay;
+    float current_angle;
 } servo_t;
 
 /**
@@ -38,5 +39,7 @@ esp_err_t servo_pca9685_set_angle(servo_t *servo, float angle, float pwm_freq);
 esp_err_t servo_pca9685_get_angle(servo_t *servo,  float *angle, float pwm_freq);
 
 void servo_pca9685_move_smooth(servo_t *servo, float pwm_freq);
+
+void servo_pca9685_move_smoth_timer(servo_t *servo);
 
 #endif

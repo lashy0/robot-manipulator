@@ -2,9 +2,12 @@
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_timer.h"
 #include "arm_robot.h"
 
 static const char *TAG = "arm_robot";
+
+static esp_timer_handle_t movement_timer;
 
 float clamp(float value, float min, float max)
 {
@@ -46,7 +49,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t pca9685)
     robot->base_servo.min_pulse_width = SERVO_BASE_MIN_PULSE_US;
     robot->base_servo.max_pulse_width = SERVO_BASE_MAX_PULSE_US;
     robot->base_servo.max_angle = SERVO_BASE_MAX_ANGLE;
-    robot->base_servo.delay = 40;
+    robot->base_servo.delay = 40000;
     robot->base_servo.step = 2;
 
     robot->base_target_angle = SERVO_BASE_START_ANGLE;
@@ -58,7 +61,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t pca9685)
     robot->shoulder_servo.min_pulse_width = SERVO_SHOULDER_MIN_PULSE_US;
     robot->shoulder_servo.max_pulse_width = SERVO_SHOULDER_MAX_PULSE_US;
     robot->shoulder_servo.max_angle = SERVO_SHOULDER_MAX_ANGLE;
-    robot->shoulder_servo.delay = 40;
+    robot->shoulder_servo.delay = 40000;
     robot->shoulder_servo.step = 2;
 
     robot->shoulder_target_angle = SERVO_SHOULDER_START_ANGLE;
@@ -70,7 +73,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t pca9685)
     robot->elbow_servo.min_pulse_width = SERVO_ELBOW_MIN_PULSE_US;
     robot->elbow_servo.max_pulse_width = SERVO_ELBOW_MAX_PULSE_US;
     robot->elbow_servo.max_angle = SERVO_ELBOW_MAX_ANGLE;
-    robot->elbow_servo.delay = 40;
+    robot->elbow_servo.delay = 40000;
     robot->elbow_servo.step = 2;
 
     robot->elbow_target_angle = SERVO_ELBOW_START_ANGLE;
@@ -82,7 +85,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t pca9685)
     robot->wrist_servo.min_pulse_width = SERVO_WRIST_MIN_PULSE_US;
     robot->wrist_servo.max_pulse_width = SERVO_WRIST_MAX_PULSE_US;
     robot->wrist_servo.max_angle = SERVO_WRIST_MAX_ANGLE;
-    robot->wrist_servo.delay = 40;
+    robot->wrist_servo.delay = 40000;
     robot->wrist_servo.step = 2;
 
     robot->wrist_target_angle = SERVO_WRIST_START_ANGLE;
@@ -94,7 +97,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t pca9685)
     robot->wrist_rot_servo.min_pulse_width = SERVO_WRIST_ROT_MIN_PULSE_US;
     robot->wrist_rot_servo.max_pulse_width = SERVO_WRIST_ROT_MAX_PULSE_US;
     robot->wrist_rot_servo.max_angle = SERVO_WRIST_ROT_MAX_ANGLE;
-    robot->wrist_rot_servo.delay = 40;
+    robot->wrist_rot_servo.delay = 40000;
     robot->wrist_rot_servo.step = 2;
 
     robot->wrist_rot_target_angle = SERVO_WRIST_ROT_START_ANGLE;
@@ -106,7 +109,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t pca9685)
     robot->gripper_servo.min_pulse_width = SERVO_GRIPPER_MIN_PULSE_US;
     robot->gripper_servo.max_pulse_width = SERVO_GRIPPER_MAX_PULSE_US;
     robot->gripper_servo.max_angle = SERVO_GRIPPER_MAX_ANGLE;
-    robot->gripper_servo.delay = 40;
+    robot->gripper_servo.delay = 40000;
     robot->gripper_servo.step = 2;
 
     robot->gripper_target_angle = SERVO_GRIPPER_START_ANGLE;
@@ -151,6 +154,137 @@ esp_err_t arm_robot_home_state(arm_robot_t *robot)
     ESP_LOGI(TAG, "End set angle home state");
 
     return ESP_OK;
+}
+
+static void movement_timer_callback(void *arg)
+{
+    arm_robot_t *robot = (arm_robot_t *)arg;
+
+    esp_err_t ret;
+    float cur_base_angle;
+    float cur_shoulder_angle;
+    float cur_elbow_angle;
+    float cur_wrist_angle;
+    float cur_wrist_rot_angle;
+    float cur_gripper_angle;
+
+    ret = servo_pca9685_get_angle(&robot->base_servo, &cur_base_angle, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+    ret = servo_pca9685_get_angle(&robot->shoulder_servo, &cur_shoulder_angle, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+    ret = servo_pca9685_get_angle(&robot->elbow_servo, &cur_elbow_angle, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+    ret = servo_pca9685_get_angle(&robot->wrist_servo, &cur_wrist_angle, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+    ret = servo_pca9685_get_angle(&robot->wrist_rot_servo, &cur_wrist_rot_angle, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+    ret = servo_pca9685_get_angle(&robot->gripper_servo, &cur_gripper_angle, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+
+    ret = move_servo_to_angle(&robot->base_servo, &cur_base_angle, robot->base_target_angle);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+
+    ret = move_servo_to_angle(&robot->shoulder_servo, &cur_shoulder_angle, robot->shoulder_target_angle);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+
+    ret = move_servo_to_angle(&robot->elbow_servo, &cur_elbow_angle, robot->elbow_target_angle);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+
+    ret = move_servo_to_angle(&robot->wrist_servo, &cur_wrist_angle, robot->wrist_target_angle);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+
+    ret = move_servo_to_angle(&robot->wrist_rot_servo, &cur_wrist_rot_angle, robot->wrist_rot_target_angle);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+
+    ret = move_servo_to_angle(&robot->gripper_servo, &cur_gripper_angle, robot->gripper_target_angle);
+    if (ret != ESP_OK) {
+        esp_timer_stop(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
+
+    if ((robot->base_target_angle == cur_base_angle) && (robot->shoulder_target_angle == cur_shoulder_angle)
+    && (robot->elbow_target_angle == cur_elbow_angle) && (robot->wrist_target_angle == cur_wrist_angle)
+    && (robot->wrist_rot_target_angle == cur_wrist_rot_angle) && (robot->gripper_target_angle == cur_gripper_angle)) {
+        robot->is_moving = false;
+        esp_timer_stop(movement_timer);
+        return;
+    }
+
+}
+
+void arm_robot_movement_timer(arm_robot_t *robot)
+{
+     if (robot->is_moving) {
+        ESP_LOGI(TAG, "Movement in progress, updating target angles");
+        return;
+        // return ESP_OK;
+    }
+
+    robot->is_moving = true;
+
+    const esp_timer_create_args_t timer_args = {
+        .callback = &movement_timer_callback,
+        .arg = (void *)robot,
+        .name = "arm_robot_movement"
+    };
+
+    if (esp_timer_create(&timer_args, &movement_timer) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create movement timer");
+        robot->is_moving = false;
+        return;
+    }
+
+    if (esp_timer_start_periodic(movement_timer, robot->delay) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start move timer");
+        esp_timer_delete(movement_timer);
+        robot->is_moving = false;
+        return;
+    }
 }
 
 // TODO: добавить сюда проверки по току или когда выставляется значение угла
