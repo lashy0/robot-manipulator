@@ -34,6 +34,8 @@ esp_err_t servo_pca9685_set_angle(servo_t *servo, float angle, float pwm_freq)
     uint16_t off_time = (uint16_t)((pulse_width * 4096) / (1000000 / pwm_freq));
     uint16_t on_time = 0;
 
+    ESP_LOGI(TAG, "Setting servo angle to %.2f degrees (pulse width: %.2f us, on_time: %d, off_time: %d)", angle, pulse_width, on_time, off_time);
+
     ret = pca9685_set_pwm(&servo->pca9685, servo->channel, on_time, off_time);
     if (ret != ESP_OK) {
         return ret;
@@ -55,13 +57,13 @@ esp_err_t servo_pca9685_get_angle(servo_t *servo,  float *angle, float pwm_freq)
 
     float pulse_width = ((off_time - on_time) * (1000000 / pwm_freq)) / 4096;
 
+    // TODO: изменить вычисление
     // Converting pulse duration to angle
-    pulse_width = (pulse_width - servo->min_pulse_width);
+    float pulse_width_temp = (pulse_width - servo->min_pulse_width);
     pulse_width = pulse_width < 0.0f ? 0.0f : pulse_width;
-    *angle = (pulse_width * servo->max_angle) / (servo->max_pulse_width - servo->min_pulse_width);
+    *angle = (pulse_width_temp * servo->max_angle) / (servo->max_pulse_width - servo->min_pulse_width);
 
-    // ESP_LOGI(TAG, "pulse: %.2f", pulse_width);
-    // ESP_LOGI(TAG, "on: %d, off: %d", on_time, off_time);
+    ESP_LOGI(TAG, "Get servo angle to %.2f degrees (pulse width: %.2f us, on_time: %d, off_time: %d)", *angle, pulse_width, on_time, off_time);
 
     return ESP_OK;
 }

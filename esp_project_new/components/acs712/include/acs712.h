@@ -23,10 +23,12 @@ typedef struct {
  * @param[in] acs712 Pointer to the ACS712 sensor structure
  * @param[in] unit The ADC unit
  * @param[in] atten The ADC attenuation level
+ * @param[in] channel
+ * @param[in] sensitivity
  * 
  * @return ESP_OK Success, or ESP_FAIL if the initialization or configuration fails at any step
  */
-esp_err_t acs712_init(acs712_t *acs712, adc_unit_t unit, adc_atten_t atten);
+esp_err_t acs712_init(acs712_t *acs712, adc_unit_t unit, adc_atten_t atten, adc_channel_t channel, float sensitivity);
 
 /**
  * @brief Deinitialize the ACS712 current sensor

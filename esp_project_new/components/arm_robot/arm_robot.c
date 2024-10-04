@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_timer.h"
@@ -24,7 +25,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
         .max_pulse_width = SERVO_BASE_MAX_PULSE_US,
         .max_angle = SERVO_BASE_MAX_ANGLE,
         .step = 2.0f,
-        .delay = 20
+        .delay = 40
     };
 
     servo_pca9685_init(&robot->manipulator.base_servo, pca9685, &base_config);
@@ -39,7 +40,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
         .max_pulse_width = SERVO_SHOULDER_MAX_PULSE_US,
         .max_angle = SERVO_SHOULDER_MAX_ANGLE,
         .step = 2.0f,
-        .delay = 20
+        .delay = 40
     };
     servo_pca9685_init(&robot->manipulator.shoulder_servo, pca9685, &shoulder_config);
     robot->manipulator.shoulder_servo.current_angle = SERVO_SHOULDER_START_ANGLE;
@@ -53,7 +54,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
         .max_pulse_width = SERVO_ELBOW_MAX_PULSE_US,
         .max_angle = SERVO_ELBOW_MAX_ANGLE,
         .step = 2.0f,
-        .delay = 20
+        .delay = 40
     };
     servo_pca9685_init(&robot->manipulator.elbow_servo, pca9685, &elbow_config);
     robot->manipulator.elbow_servo.current_angle = SERVO_ELBOW_START_ANGLE;
@@ -67,7 +68,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
         .max_pulse_width = SERVO_WRIST_MAX_PULSE_US,
         .max_angle = SERVO_WRIST_MAX_ANGLE,
         .step = 2.0f,
-        .delay = 20
+        .delay = 40
     };
     servo_pca9685_init(&robot->manipulator.wrist_servo, pca9685, &wrist_config);
     robot->manipulator.wrist_servo.current_angle = SERVO_WRIST_START_ANGLE;
@@ -81,7 +82,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
         .max_pulse_width = SERVO_WRIST_ROT_MAX_PULSE_US,
         .max_angle = SERVO_WRIST_ROT_MAX_ANGLE,
         .step = 2.0f,
-        .delay = 20
+        .delay = 40
     };
     servo_pca9685_init(&robot->arm.wrist_rot_servo, pca9685, &wrist_rot_config);
     robot->arm.wrist_rot_servo.current_angle = SERVO_WRIST_ROT_START_ANGLE;
@@ -95,7 +96,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
         .max_pulse_width = SERVO_GRIPPER_MAX_PULSE_US,
         .max_angle = SERVO_GRIPPER_MAX_ANGLE,
         .step = 2.0f,
-        .delay = 20
+        .delay = 40
     };
     servo_pca9685_init(&robot->arm.gripper.gripper_servo, pca9685, &gripper_config);
     robot->arm.gripper.gripper_servo.current_angle = SERVO_GRIPPER_START_ANGLE;
@@ -180,7 +181,7 @@ static void move_servo_timer_callback(void *arg)
         return;
     }
 
-    ESP_LOGI(TAG, "Moving to angle: %.2f; Target_angle: %.2f; Channel: %d", current_angle, servo->target_angle, servo->channel);
+    // ESP_LOGI(TAG, "Moving to angle: %.2f; Target_angle: %.2f; Channel: %d", current_angle, servo->target_angle, servo->channel);
 }
 
 static void start_servo_move_smoth_timer(servo_t *servo)
@@ -297,17 +298,20 @@ static void move_manipulator_timer_callback(void *arg)
         }
 
         // Вычисляем шаг изменения угла (положительный или отрицательный в зависимости от целевого угла)
-        float increment = (manipulator_movement.target_angles[i] > current_angle) ? servos[i]->step : -servos[i]->step;
-        current_angle += increment;
+        float increment = (manipulator_movement.target_angles[i] > current_angle) ? 2.0 : -2.0;
 
-        // Проверяем, достигли ли мы целевого угла для текущего сервопривода
-        if ((increment > 0 && current_angle >= manipulator_movement.target_angles[i]) ||
-            (increment < 0 && current_angle <= manipulator_movement.target_angles[i])) {
-            current_angle = manipulator_movement.target_angles[i];  // Устанавливаем угол на целевой
-        } else {
-            all_reached = false;  // Не все сервоприводы достигли целевых углов
+        if (current_angle != manipulator_movement.target_angles[i]) {
+            current_angle += increment;
+            // Проверяем, достигли ли мы целевого угла для текущего сервопривода
+            if ((increment > 0 && current_angle >= manipulator_movement.target_angles[i]) ||
+                (increment < 0 && current_angle <= manipulator_movement.target_angles[i])) {
+                current_angle = manipulator_movement.target_angles[i];  // Устанавливаем угол на целевой
+            } else {
+                all_reached = false;  // Не все сервоприводы достигли целевых углов
+            }
         }
 
+        ESP_LOGI(TAG, "Manipulator [pwm%d] to current angles: %.2f; target anglse: %.2f", servos[i]->channel, current_angle, manipulator_movement.target_angles[i]);
         // Устанавливаем текущий угол для текущего сервопривода
         ret = servo_pca9685_set_angle(servos[i], current_angle, PWM_FREQUENCY);
         if (ret != ESP_OK) {
@@ -321,6 +325,8 @@ static void move_manipulator_timer_callback(void *arg)
         manipulator_movement.move_timer = NULL;
         manipulator_movement.is_busy = false;
         ESP_LOGI(TAG, "Manipulator reached all target angles");
+
+        printf("DONE\n");
     }
 }
 
@@ -350,7 +356,7 @@ esp_err_t arm_robot_move_manipulator_to_angles(arm_robot_t *robot, float base_an
         return ESP_FAIL;
     }
 
-    if (esp_timer_start_periodic(manipulator_movement.move_timer, 20 * 1000) != ESP_OK) {  // 20 мс
+    if (esp_timer_start_periodic(manipulator_movement.move_timer, 30000) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to start manipulator move timer");
         esp_timer_delete(manipulator_movement.move_timer);
         manipulator_movement.move_timer = NULL;
