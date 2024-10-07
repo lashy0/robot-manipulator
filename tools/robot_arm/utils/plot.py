@@ -13,17 +13,17 @@ class RobotArm3DPlot:
 
     Parameters:
         chain (Chain): The ikpy chain representing the robotic arm.
-        xlim (Tuple[float, float]): Limits for the X-axis in the plot.
-        ylim (Tuple[float, float]): Limits for the Y-axis in the plot.
-        zlim (Tuple[float, float]): Limits for the Z-axis in the plot.
+        xlim (Optional[Tuple[float, float]]): Limits for the X-axis in the plot.
+        ylim (Optional[Tuple[float, float]]): Limits for the Y-axis in the plot.
+        zlim (Optional[Tuple[float, float]]): Limits for the Z-axis in the plot.
         initial_angles (Optional[np,ndarray]): Initial joint angles for the robotic arm.
     """
     def __init__(
         self,
         chain: Chain,
-        xlim: Tuple[float, float] = (-0.5, 0.5),
-        ylim: Tuple[float, float] = (-0.5, 0.5),
-        zlim: Tuple[float, float] = (0, 0.5),
+        xlim: Optional[Tuple[float, float]] = (-0.5, 0.5),
+        ylim: Optional[Tuple[float, float]] = (-0.5, 0.5),
+        zlim: Optional[Tuple[float, float]] = (0, 0.5),
         initial_angles: Optional[np.ndarray] = None
     ) -> None:
         self.chain = chain
