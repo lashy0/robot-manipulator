@@ -53,9 +53,7 @@ ROBOT_CHAIN = Chain(name='robot_arm', links=[
         rotation=None,
         joint_type='fixed',
     )
-],
-active_links_mask = [True, True, True, True, False, False]
-)
+], active_links_mask = [True, True, True, True, False, False])
 
 START_ANGLE_POSITION = [0] * len(ROBOT_CHAIN.links)
 

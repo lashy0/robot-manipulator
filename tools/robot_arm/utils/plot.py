@@ -1,14 +1,13 @@
 import numpy as np
 from ikpy.chain import Chain
 from ikpy.utils.plot import init_3d_figure
-from typing import List, Tuple, Optional
+from typing import Tuple, Optional
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D
 
 
-class RobotArmPlot:
+class RobotArm3DPlot:
     """
     A class to visualize and animate a robotic arm manipulator using ikpy and matplotlib.
 
@@ -36,11 +35,24 @@ class RobotArmPlot:
 
         if fig is None or ax is None:
             self.fig, self.ax = self._init_plot()
+        # TODO: если передавать, то он должен быть настроен
         else:
             self.fig, self.ax = fig, ax
 
         # Initialize graphical elements (lines, scatter points, axes)
         self._init_plot_elements()
+
+    def get_plot_objects(self) -> Tuple[Figure, Axes3D]:
+        """
+        Returns the current figure and axis objects for future use.
+
+        Returns:
+            Tuple[Figure, Axes3D]: matplotlib figure and 3D axes.
+        """
+        return self.fig, self.ax
+    
+    def get_chain(self) -> Chain:
+        return self.chain
 
     def _init_plot(self) -> Tuple[Figure, Axes3D]:
         """
@@ -156,36 +168,12 @@ class RobotArmPlot:
         # self.ax.set_zlim(self.zlim)
 
         # Перерисовываем фигуру
-        # plt.draw()
-
-    def animate(
-        self,
-        angles_seq: List[np.ndarray],
-        interval: int = 100,
-        repeat: bool = True
-    ) -> None:
-        """
-        Animates the robotic arm motion based on a sequence of joint angles.
-
-        Args:
-            angles_seq (List[np.ndarray]): A sequence of joint angle arrays for each frame.
-            interval (int, optional): Delay between frames in milliseconds.
-            repeat (bool, optional): Whether the animation should repeat after completing.
-        """
-        def update(frame: int) -> None:
-            self.plot(angles_seq[frame])
-
-        # Create the animation object
-        ani = FuncAnimation(
-            self.fig,
-            update,
-            frames=len(angles_seq),
-            interval=interval,
-            repeat=repeat
-        )
-
-        self.show()
+        # self.draw()
 
     def show(self) -> None:
         """Displays the plot window."""
         plt.show()
+    
+    def draw(self) -> None:
+        """Refreshes and displays the current state of the plot."""
+        plt.draw()

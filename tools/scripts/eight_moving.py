@@ -73,7 +73,7 @@ def send_angles_to_robot(device : SerialDevice, joint_angles):
     for idx, angles in enumerate(joint_angles):
         # Ожидаем, пока is_moving не станет False
         while get_robot_movement_status(device):
-            time.sleep(0.15)
+            time.sleep(0.1)
 
         # Отправка углов на микроконтроллер
         base_angle = round(float(90 + angles[0]), 2)
@@ -140,9 +140,8 @@ if __name__ == '__main__':
         width = 0.1
         shift = 0.2
         points_number = 100
-        t = np.linspace(0, 2 * np.pi, points_number)  # Parameter t from 0 to 2¦Р
+        t = np.linspace(0, 2 * np.pi, points_number)
         x = [shift] * points_number
-        # y = width * np.sin(2 * t) + shift
         y = width * np.sin(2 * t)
         z = width * np.sin(t) + shift
 
