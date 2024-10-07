@@ -2,6 +2,16 @@
 #define SERVO_H
 
 #include "pca9685.h"
+#include "esp_timer.h"
+
+typedef struct {
+    uint8_t channel;
+    uint16_t min_pulse_width;
+    uint16_t max_pulse_width;
+    float max_angle;
+    float step;
+    int delay;
+} servo_config_t;
 
 typedef struct {
     pca9685_t pca9685;
@@ -14,7 +24,10 @@ typedef struct {
     float step;
     int delay;
     float current_angle;
+    esp_timer_handle_t move_timer;
 } servo_t;
+
+void servo_pca9685_init(servo_t *servo, pca9685_t *pca9685, const servo_config_t *config);
 
 /**
  * @brief Set the servo motor to a specified angle using PCA9685
@@ -37,9 +50,5 @@ esp_err_t servo_pca9685_set_angle(servo_t *servo, float angle, float pwm_freq);
  * @return ESP_OK if successful, or ESP_FAIL
  */
 esp_err_t servo_pca9685_get_angle(servo_t *servo,  float *angle, float pwm_freq);
-
-void servo_pca9685_move_smooth(servo_t *servo, float pwm_freq);
-
-void servo_pca9685_move_smoth_timer(servo_t *servo);
 
 #endif

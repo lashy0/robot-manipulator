@@ -45,7 +45,7 @@ void pca9685_get_osc_freq(pca9685_t *pca9685, uint32_t *freq)
 
 esp_err_t pca9685_init(pca9685_config_t *config, pca9685_t *pca9685)
 {
-     if (pca9685->is_initialized) {
+    if (pca9685->is_initialized) {
         ESP_LOGW(TAG, "I2C device is already initialized");
         return ESP_FAIL;
     }

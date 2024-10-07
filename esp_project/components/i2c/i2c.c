@@ -30,7 +30,6 @@ esp_err_t i2c_master_init(i2c_bus_t *bus, const i2c_config_bus_t *config)
         return ESP_FAIL;;
     }
 
-    ESP_LOGI(TAG, "I2C bus initialized successfully");
     bus->is_initialized = true;
 
     return ESP_OK;

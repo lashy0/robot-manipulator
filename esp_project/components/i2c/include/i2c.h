@@ -20,6 +20,11 @@ typedef struct {
     bool is_initialized;                /**< Flag indicating if the bus is initialized */
 } i2c_bus_t;
 
+#define I2C_BUS_DEFAULT() { \
+    .handle = NULL, \
+    .is_initialized = false \
+}
+
 /**
  * @brief Initialize the I2C master bus
  * 

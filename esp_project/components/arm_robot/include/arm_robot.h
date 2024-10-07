@@ -47,34 +47,37 @@
 #define SERVO_GRIPPER_MIN_PULSE_US CONFIG_SERVO_GRIPPER_MIN_PULSE_US
 #define SERVO_GRIPPER_MAX_PULSE_US CONFIG_SERVO_GRIPPER_MAX_PULSE_US
 
-// TODO: target angle имеется в структуре серва
-// TODO: посмотреть что лучше отслеживать всю систему с помщью is_moving или каждый серв отслеживать отдельно?
-// TODO: сделать настраиваемый в процессе?? задержку и шаг угла
+typedef enum {
+    GRIPPER_OPEN,
+    GRIPPER_CLOSE
+} gripper_state_t;
+
+typedef struct {
+    servo_t gripper_servo;
+    gripper_state_t state;
+} gripper_t;
+
+typedef struct {
+    servo_t wrist_rot_servo;
+    gripper_t gripper;
+} arm_t;
+
 typedef struct {
     servo_t base_servo;
     servo_t shoulder_servo;
     servo_t elbow_servo;
     servo_t wrist_servo;
-    servo_t wrist_rot_servo;
-    servo_t gripper_servo;
+} manipulator_t;
 
-    int delay;
-
-    // ???
-    float base_target_angle;
-    float shoulder_target_angle;
-    float elbow_target_angle;
-    float wrist_target_angle;
-    float wrist_rot_target_angle;
-    float gripper_target_angle;
-
-    bool is_moving; // флаг выполнения движения
+typedef struct {
+    manipulator_t manipulator;
+    arm_t arm;
 } arm_robot_t;
 
 /**
  * @brief Initializes the robot arm by setting up all six servos
  */
-void arm_robot_init(arm_robot_t *robot, pca9685_t pca9685);
+void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685);
 
 /**
  * @brief Moves the robot arm to its home (default) position
@@ -85,22 +88,8 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t pca9685);
  */
 esp_err_t arm_robot_home_state(arm_robot_t *robot);
 
-/**
- * @brief Moves the robot arm to the specified angles for all servos
- * 
- * @param[in] robot Pointer to structure representing the robot arm
- * @param[in] base_angle Target angle for the base servo
- * @param[in] shoulder_angle Target angle for the shoulder servo
- * @param[in] elbow_angle Target angle for the elbow servo
- * @param[in] wrist_angle Target angle for the wrist servo
- * @param[in] wrist_rot_angle Target angle for the wrist rotation servo
- * @param[in] gripper_angle Target angle for the gripper servo
- * @param[in] delay Delay between each step of movement, in milliseconds
- * 
- * @return ESP_OK is Success, or ESP_FAIL
- */
-void arm_robot_movement(arm_robot_t *robot);
+esp_err_t arm_robot_move_servo_to_angle(arm_robot_t *robot, uint8_t channel, float angle);
 
-void arm_robot_movement_timer(arm_robot_t *robot);
+esp_err_t arm_robot_move_manipulator_to_angles(arm_robot_t *robot, float base_angle, float shoulder_angle, float elbow_angle, float wrist_angle);
 
 #endif

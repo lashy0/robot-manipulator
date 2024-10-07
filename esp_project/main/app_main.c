@@ -1,18 +1,23 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_vfs_usb_serial_jtag.h"
 #include "esp_vfs_dev.h"
+#include "esp_log.h"
 
 #include "i2c.h"
-#include "pca9685.h"
 #include "acs712.h"
-#include "servo_pca9685.h"
+#include "pca9685.h"
 #include "arm_robot.h"
+
+static const char *TAG = "app_main";
+
+#define I2C_MASTER_SCL_IO          GPIO_NUM_7
+#define I2C_MASTER_SDA_IO          GPIO_NUM_6 
+#define I2C_MASTER_NUM             I2C_NUM_0
+#define I2C_MASTER_FREQ_HZ         100000
 
 #define ACS712_ADC_CHANNEL         ADC_CHANNEL_2
 #define ACS712_ADC_UNIT            ADC_UNIT_1
@@ -21,281 +26,248 @@
 
 #define PCA9685_I2C_ADDR           0x40
 
-#define I2C_MASTER_SCL_IO          GPIO_NUM_7
-#define I2C_MASTER_SDA_IO          GPIO_NUM_6 
-#define I2C_MASTER_NUM             I2C_NUM_0
-#define I2C_MASTER_FREQ_HZ         100000
-
-#define BUF_SIZE 128
-
 arm_robot_t robot;
 acs712_t acs712;
 
-static void usb_serial_send_current(void *arg) {
-    while(1) {
-        float current;
-        acs712_read_current(&acs712, &current);
-        char temp_buffer[32];
+float current;
 
-        int len = snprintf(temp_buffer, sizeof(temp_buffer), "%f\n", current);
+// Фильтр среднего
+esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples)
+{
+    esp_err_t ret;
+    int raw;
+    int voltage;
+    int sum = 0;
 
-        usb_serial_jtag_write_bytes((uint8_t *)temp_buffer, len, pdMS_TO_TICKS(100));
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
+    for (int i = 0; i < samples; i++) {
+        if (acs712_read_raw(acs712, &raw) == ESP_OK) {
+            sum += raw;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        else {
+            return ESP_FAIL;
+        }
     }
+
+    ret = adc_cali_raw_to_voltage(acs712->cali_handle, sum / samples, &voltage);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
+
+    acs712->calibrate_voltage = voltage;
+
+    return ESP_OK;
 }
+// End
 
-void servo_move_task(void *arg) {
-    servo_t *servo = (servo_t *)arg;
-
-    servo_pca9685_move_smooth(servo, PWM_FREQUENCY);
-
-    vTaskDelete(NULL);
-}
-
-void servos_move_task(void *arg) {
+// Вариант функции движения с использованием ACS712
+static void move_manipulator_task(void *arg)
+{
     arm_robot_t *robot = (arm_robot_t *)arg;
+    float current_angle;
+    float step = 2.0f;  // Шаг изменения угла
+    float current_task;
+    bool all_reached = false;
+    esp_err_t ret;
+    float current_thresh = current;
 
-    arm_robot_movement(robot);
+    // Целевые углы
+    float target_angles[4] = {
+        robot->manipulator.base_servo.target_angle,
+        robot->manipulator.shoulder_servo.target_angle,
+        robot->manipulator.elbow_servo.target_angle,
+        robot->manipulator.wrist_servo.target_angle
+    };
 
+    // Массив указателей на сервоприводы манипулятора
+    servo_t *servos[4] = {
+        &robot->manipulator.base_servo,
+        &robot->manipulator.shoulder_servo,
+        &robot->manipulator.elbow_servo,
+        &robot->manipulator.wrist_servo
+    };
+
+    while (!all_reached) {
+        all_reached = true;
+
+        for (int i = 0; i < 4; i++) {
+            ret = servo_pca9685_get_angle(servos[i], &current_angle, PWM_FREQUENCY);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to get current angle for servo %d", i);
+                continue;
+            }
+
+            // Вычисляем шаг изменения угла
+            float increment = (target_angles[i] > current_angle) ? step : -step;
+            current_angle += increment;
+
+            // Проверяем, достигли ли мы целевого угла для текущего серв
+            if ((increment > 0 && current_angle >= target_angles[i]) ||
+                (increment < 0 && current_angle <= target_angles[i])) {
+                current_angle = target_angles[i];
+            } else {
+                all_reached = false;
+            }
+
+            ESP_LOGI(TAG, "Manipulator [pwm%d] to current angles: %.2f; target anglse: %.2f", servos[i]->channel, current_angle, target_angles[i]);
+            // Устанавливаем текущий угол для текущего сервопривода
+            ret = servo_pca9685_set_angle(servos[i], current_angle, PWM_FREQUENCY);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to set angle for servo %d", i);
+            }
+        }
+
+        // Считываем силу тока с ACS712
+        if (acs712_read_current(&acs712, &current_task) == ESP_OK) {
+            ESP_LOGI(TAG, "Current: %.3f A", current_task);
+
+            // Проверяем, меньше ли сила тока порога
+            if (current_task < current_thresh) {
+                ESP_LOGI(TAG, "Current threshold reached, stopping movement.");
+                all_reached = true;  // движение завершено
+            }
+        } else {
+            ESP_LOGE(TAG, "Failed to read current from ACS712");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    // Отправляем сообщение о завершении движения
+    char done_message[] = "DONE\n";
+    usb_serial_jtag_write_bytes((const uint8_t *)done_message, sizeof(done_message) - 1, portMAX_DELAY);
+
+    ESP_LOGI(TAG, "Manipulator movement completed.");
     vTaskDelete(NULL);
 }
 
-bool get_movement_status() {
-    return robot.is_moving;
+esp_err_t arm_robot_move_manipulator(arm_robot_t *robot, float base_angle, float shoulder_angle, float elbow_angle, float wrist_angle)
+{
+    if (!robot) {
+        ESP_LOGE(TAG, "Invalid robot pointer");
+        return ESP_FAIL;
+    }
+
+    // Устанавливаем целевые углы для всех сервоприводов
+    robot->manipulator.base_servo.target_angle = base_angle;
+    robot->manipulator.shoulder_servo.target_angle = shoulder_angle;
+    robot->manipulator.elbow_servo.target_angle = elbow_angle;
+    robot->manipulator.wrist_servo.target_angle = wrist_angle;
+
+    xTaskCreate(move_manipulator_task, "Move Manipulator Task", 4096, (void *)robot, 5, NULL);
+
+    ESP_LOGI(TAG, "Started moving manipulator to target angles without timer.");
+    return ESP_OK;
 }
+// End
 
-// TODO: подумать как лучше организовать прошивки
-// TODO: разделить на две прошивки, одна для работы с движениями, другая тестовая для проверки работы системы
-// TODO: подробней разобраться с task в FreeRTOS
-// TODO: попробовать ускорить получение команды ? т.е. сначало считываем что за команда (до встречи пробела) и уже делаем проверку на нее
-void process_command(char *input) {
+static void parse_command(const char *input)
+{
+    char command[128];
+    strncpy(command, input, sizeof(command) - 1);
+    command[sizeof(command) - 1] = '\0';
 
-    if (strncmp(input, "GET_ANGLE", 9) == 0) {
-        uint8_t channel;
-        float cur_angle;
-
-        // TODO: получше решение для получения значений с USB Serial JTAG
-        char subbuff[10];
-        // strncpy вместо memcpy?
-        memcpy(subbuff, &input[9], 9);
-        subbuff[10] = '\0';
-
-        sscanf(subbuff, "%hhu", &channel);
-
-        // TODO: переделать
-        if (robot.base_servo.channel == channel) {
-            servo_pca9685_get_angle(&robot.base_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Base (pwm %d) servo angle: %.2f\n", channel, cur_angle);
-        }
-        else if (robot.shoulder_servo.channel == channel) {
-            servo_pca9685_get_angle(&robot.shoulder_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Shoulder (pwm %d) servo angle: %.2f\n", channel, cur_angle);
-        }
-        else if (robot.elbow_servo.channel == channel) {
-            servo_pca9685_get_angle(&robot.elbow_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Elbow (pwm %d) servo angle: %.2f\n", channel, cur_angle);
-        }
-        else if (robot.wrist_servo.channel == channel) {
-            servo_pca9685_get_angle(&robot.wrist_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Wrist rot (pwm %d) servo angle: %.2f\n", channel, cur_angle);
-        }
-        else if (robot.wrist_rot_servo.channel == channel) {
-            servo_pca9685_get_angle(&robot.wrist_rot_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Wrist ver (pwm %d) servo angle: %.2f\n", channel, cur_angle);
-        }
-        else if (robot.gripper_servo.channel == channel) {
-            servo_pca9685_get_angle(&robot.gripper_servo, &cur_angle, PWM_FREQUENCY);
-            printf("Gripper (pwm %d) servo angle: %.2f\n", channel, cur_angle);
-        }
-        else {
-            printf("None\n");
-        }
-    }
-    else if (strncmp(input, "GET_STATUS_MOVING", 17) == 0) {
-        char status_msg[16];
-        snprintf(status_msg, sizeof(status_msg), "STATUS %d\n", get_movement_status());
-        usb_serial_jtag_write_bytes((const uint8_t *)status_msg, strlen(status_msg), pdMS_TO_TICKS(100));
-    }
-    else if (strncmp(input, "SET_ANGLES", 10) == 0) {
-        float angle_base;
-        float angle_shoulder;
-        float angle_elbow;
-        float angle_wrist;
-        float angle_wrist_rot;
-
-        int delay = 20;
-
-        char subbuff[40];
-        memcpy(subbuff, &input[10], 39);
-        subbuff[40] = '\0';
-
-        printf("%s\n", subbuff);
-
-        sscanf(subbuff, "%f %f %f %f %f", &angle_base, &angle_shoulder, &angle_elbow, &angle_wrist, &angle_wrist_rot);
-        // printf("Angle base: %.2f; Angle shoulder: %.2f; Angle elbow: %.2f; Angle wrist: %.2f; Angle wrist rotation: %.2f\n", angle_base, angle_shoulder, angle_elbow, angle_wrist, angle_wrist_rot);
-
-        if (!robot.is_moving) {
-            printf("Settings angles\n");
-
-            robot.base_target_angle = angle_base;
-            robot.shoulder_target_angle = angle_shoulder;
-            robot.elbow_target_angle = angle_elbow;
-            robot.wrist_target_angle = angle_wrist;
-            robot.wrist_rot_target_angle = angle_wrist_rot;
-            robot.gripper_target_angle = 140;
-            robot.delay = delay;
-
-            xTaskCreate(servos_move_task, "servos move task", 4096, &robot, 2, NULL);
-        }
-        else {
-            printf("None\n");
-        }
-    }
-    else if (strncmp(input, "SET_ANGLE", 9) == 0) {
+    // Command format: SET_ANGLE <pwm_id> <angle>
+    if (strncmp(command, "SET_ANGLE", 9) == 0) {
         uint8_t channel;
         float angle;
 
-        char subbuff[10];
-        memcpy(subbuff, &input[9], 9);
-        subbuff[10] = '\0';
-
-        sscanf(subbuff, "%hhu %f", &channel, &angle);
-        // printf("Setting angle %.2f on channel %d\n", angle, channel);
-
-        float step = 1.5;
-        int delay = 40;
-
-        // TODO: переделать
-        if (robot.base_servo.channel == channel) {
-            if (!robot.base_servo.is_busy) {
-                // printf("Setting angle %.2f on channel %d\n", angle, channel);
-                // servo_pca9685_move_smooth(&robot.base_servo, angle, PWM_FREQUENCY, step, delay);
-
-                robot.base_servo.step = step;
-                robot.base_servo.delay = delay;
-                robot.base_servo.target_angle = angle;
-                xTaskCreate(servo_move_task, "base servo move task", 4096, &robot.base_servo, 1, NULL);
-            }
-            else {
-                robot.base_servo.target_angle = angle;
-                // printf("Updating target angle for base servo to %.2f\n", angle);
-            }
+        if (sscanf(command, "SET_ANGLE %hhu %f", &channel, &angle) == 2) {
+            // Вызов функции для выставления угла серва
+            esp_err_t ret = arm_robot_move_servo_to_angle(&robot, channel, angle);
+            // if (ret != ESP_OK) {
+            //     ESP_LOGE(TAG, "Failed to move servo to angle %.2f on channel %d", angle, channel);
+            // } else {
+            //     ESP_LOGI(TAG, "Started moving servo on channel %d to angle %.2f", channel, angle);
+            // }
         }
-        else if (robot.shoulder_servo.channel == channel) {
-            if (!robot.shoulder_servo.is_busy) {
-                // printf("Setting angle %.2f on channel %d\n", angle, channel);
-
-                robot.shoulder_servo.step = step;
-                robot.shoulder_servo.delay = delay;
-                robot.shoulder_servo.target_angle = angle;
-                xTaskCreate(servo_move_task, "shoulder servo move task", 4096, &robot.shoulder_servo, 1, NULL);
-            }
-            else {
-                robot.shoulder_servo.target_angle = angle;
-                // printf("Updating target angle for shoulder servo to %.2f\n", angle);
-            }
+        else {
+            ESP_LOGW(TAG, "Invalid SET_ANGLE command format: %s", command);
         }
-        else if (robot.elbow_servo.channel == channel) {
-            if (!robot.elbow_servo.is_busy) {
-                // printf("Setting angle %.2f on channel %d\n", angle, channel);
+    }
+    // Command format: SET_MANIPULATOR <angle0> <angle1> <angle2> <angle3>
+    else if (strncmp(command, "SET_MANIPULATOR", 15) == 0) {
+        float angles[4];
 
-                robot.elbow_servo.step = step;
-                robot.elbow_servo.delay = delay;
-                robot.elbow_servo.target_angle = angle;
-                xTaskCreate(servo_move_task, "elbow servo move task", 4096, &robot.elbow_servo, 1, NULL);
-            }
-            else {
-                robot.elbow_servo.target_angle = angle;
-                // printf("Updating target angle for elbow servo to %.2f\n", angle);
-            }
-        }
-        else if (robot.wrist_servo.channel == channel) {
-            if (!robot.wrist_servo.is_busy) {
-                // printf("Setting angle %.2f on channel %d\n", angle, channel);
-
-                robot.wrist_servo.step = step;
-                robot.wrist_servo.delay = delay;
-                robot.wrist_servo.target_angle = angle;
-                xTaskCreate(servo_move_task, "wrist servo move task", 4096, &robot.wrist_servo, 1, NULL);
-            }
-            else {
-                robot.wrist_servo.target_angle = angle;
-                // printf("Updating target angle for wrist servo to %.2f\n", angle);
-            }
-        }
-        else if (robot.wrist_rot_servo.channel == channel) {
-            if (!robot.wrist_rot_servo.is_busy) {
-                // printf("Setting angle %.2f on channel %d\n", angle, channel);
-
-                robot.wrist_rot_servo.step = step;
-                robot.wrist_rot_servo.delay = delay;
-                robot.wrist_rot_servo.target_angle = angle;
-                xTaskCreate(servo_move_task, "wrist rotation servo move task", 4096, &robot.wrist_rot_servo, 1, NULL);
-            }
-            else {
-                robot.wrist_rot_servo.target_angle = angle;
-                // printf("Updating target angle for wrist rotation servo to %.2f\n", angle);
-            }
-        }
-        else if (robot.gripper_servo.channel == channel) {
-            if (!robot.gripper_servo.is_busy) {
-                // printf("Setting angle %.2f on channel %d\n", angle, channel);
-
-                robot.gripper_servo.step = step;
-                robot.gripper_servo.delay = delay;
-                robot.gripper_servo.target_angle = angle;
-                xTaskCreate(servo_move_task, "gripper servo move task", 4096, &robot.gripper_servo, 1, NULL);
-            }
-            else {
-                robot.gripper_servo.target_angle = angle;
-                // printf("Updating target angle for gripper servo to %.2f\n", angle);
+        if (sscanf(command, "SET_MANIPULATOR %f %f %f %f", &angles[0], &angles[1], &angles[2], &angles[3]) == 4) {
+            // По таймеру
+            esp_err_t ret = arm_robot_move_manipulator_to_angles(&robot, angles[0], angles[1], angles[2], angles[3]);
+            // Вариант по току
+            // esp_err_t ret = arm_robot_move_manipulator(&robot, angles[0], angles[1], angles[2], angles[3]);
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to move manipulator to angles");
+            } else {
+                ESP_LOGI(TAG, "Moving manipulator to angles: base=%.2f, shoulder=%.2f, elbow=%.2f, wrist=%.2f",
+                        angles[0], angles[1], angles[2], angles[3]);
             }
         }
         else {
-            printf("None\n");
+            ESP_LOGW(TAG, "Invalid SET_MANIPULATOR command format: %s", command);
+        }
+    }
+    // Command format: SET_GRIP 0/1
+    else if (strncmp(command, "SET_GRIP", 8) == 0) {
+        int number;
+
+        if (sscanf(command, "SET_GRIP %d", &number) == 1) {
+            // Вызов функции робота для захвата
+        }
+        else {
+            ESP_LOGW(TAG, "Invalid SET_GRIP command format: %s", command);
+        }
+    }
+    else {
+        ESP_LOGW(TAG, "Unknow command: %s", command);
+    }
+
+}
+
+static void send_current_task(void *arg)
+{
+    char buffer[64];
+
+    while (1) {
+        if (acs712_read_current(&acs712, &current) == ESP_OK) {
+            // CURRENT <value>
+            int len = snprintf(buffer, sizeof(buffer), "CURRENT %.3f\n", current);
+
+            // portMAX_DELAY
+            usb_serial_jtag_write_bytes((uint8_t *)buffer, len, pdMS_TO_TICKS(50));
+        }
+        else {
+            ESP_LOGE(TAG, "Failed to read current from ACS712");
         }
 
-        // printf("Servo on channel %d set to angle: %.2f degress\n", channel, angle);
+        vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
 
-// TODO: подобрать параметры, чтобы быстрее считывала или не надо так делать?
-static void usb_serial_task(void *arg) {
-    // uint8_t *rxbuf = (uint8_t *)malloc(BUF_SIZE);
-    // char *input_buffer = (char *)malloc(BUF_SIZE);
-
-    // if (rxbuf == NULL || input_buffer == NULL) {
-    //     printf("Failed to allocate memory!\n");
-    //     return;
-    // }
-
-    uint8_t rxbuf[BUF_SIZE];
-    char input_buffer[BUF_SIZE];
+static void usb_serial_task(void *arg)
+{
+    uint8_t rxbuf[128];
+    char input_buffer[128];
 
     size_t bytes_read = 0;
     size_t input_length = 0;
 
     while(1) {
-        // Read data from USB Serial
-        bytes_read = usb_serial_jtag_read_bytes(rxbuf, BUF_SIZE, 10 / portTICK_PERIOD_MS);
+        bytes_read = usb_serial_jtag_read_bytes(rxbuf, 128, pdMS_TO_TICKS(10));
 
         if (bytes_read > 0) {
             for (size_t i = 0; i < bytes_read; i++) {
                 if (rxbuf[i] == '\n') {
                     input_buffer[input_length] = '\0';
 
-                    process_command(input_buffer);
-
-                    // printf("Done\n");
+                    parse_command(input_buffer);
 
                     input_length = 0;
                 }
-                else if (input_length < BUF_SIZE - 1) {
+                else if (input_length < 128 - 1) {
                     input_buffer[input_length++] = rxbuf[i];
                 }
                 else {
-                    printf("Input buffer overflow, cleaaring buffer\n");
+                    ESP_LOGW(TAG, "Input buffer overflow, cleaaring buffer");
                     input_length = 0;
                 }
             }
@@ -305,22 +277,31 @@ static void usb_serial_task(void *arg) {
     }
 }
 
-// TODO: раскидать по функциям инициализации
-void app_main(void) {
+void app_main()
+{
+    // Set level log
+    esp_log_level_set("servo_pca9685", ESP_LOG_WARN);
+    esp_log_level_set("arm_robot", ESP_LOG_WARN);
+    esp_log_level_set("acs712", ESP_LOG_WARN);
+
     esp_err_t ret;
 
     // Initialize I2C
     i2c_config_bus_t i2c_master_config = {
         .port = I2C_MASTER_NUM,
         .sda_io_num = I2C_MASTER_SDA_IO,
-        .scl_io_num = I2C_MASTER_SCL_IO,
+        .scl_io_num = I2C_MASTER_SCL_IO
     };
 
-    i2c_bus_t i2c_bus = {
-        .is_initialized = false,
-    };
+    i2c_bus_t i2c_bus = {0};
 
-    i2c_master_init(&i2c_bus, &i2c_master_config);
+    ret = i2c_master_init(&i2c_bus, &i2c_master_config);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "I2C bus initialized failed");
+        return;
+    }
+    ESP_LOGI(TAG, "I2C bus initialized successfully");
+    // End
 
     // Initialize PCA9685
     pca9685_config_t pca9685_config = {
@@ -328,70 +309,122 @@ void app_main(void) {
         .bus_handle = i2c_bus.handle,
         .scl_speed = I2C_MASTER_FREQ_HZ
     };
-    
-    // ???
-    pca9685_t pca9685 = {
-        .is_initialized = false,
-    };
+
+    pca9685_t pca9685 = {0};
 
     ret = pca9685_init(&pca9685_config, &pca9685);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "PCA9685 initialized failed");
         return;
     }
-    printf("PCA9685 initialize\n");
+    ESP_LOGI(TAG, "PCA9685 initialized successfully");
 
-    ret = pca9685_set_pwm_freq(&pca9685, 50);
+    ret = pca9685_set_pwm_freq(&pca9685, PWM_FREQUENCY);
     if (ret != ESP_OK) {
         return;
     }
-    printf("PCA9685 set 50 Hz\n");
+    ESP_LOGI(TAG, "PCA9685 set pwm frequency 50 Hz");
+    // End
+
+    // Set on_time and off_time pwm
+    for (int channel = 0; channel < 16; channel++) {
+        ret = pca9685_set_pwm(&pca9685, channel, 0, 0);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed set PWM servo channel %d", channel);
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+    // End
 
     // Initialize ACS712 5A
-    acs712.adc_channel = ACS712_ADC_CHANNEL;
-    acs712.sensitivity = ACS712_SENSITIVITY;
-
-    ret = acs712_init(&acs712, ACS712_ADC_UNIT, ACS712_ADC_ATTEN);
+    ret = acs712_init(&acs712, ACS712_ADC_UNIT, ACS712_ADC_ATTEN, ACS712_ADC_CHANNEL, ACS712_SENSITIVITY);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "ACS712 initialization failed");
         return;
     }
-    printf("ACS712 5A initialize\n");
+    ESP_LOGI(TAG, "ACS712 5A initialized successfully");
+
+    ESP_LOGI(TAG, "Start calibrate voltage...");
+    ret = acs712_calibrate_voltage(&acs712, 100);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to calibrate voltage");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Calibrate voltage: %d mV", acs712.calibrate_voltage);
+    // End
 
     // Initialize robot
-    arm_robot_init(&robot, pca9685);
+    arm_robot_init(&robot, &pca9685);
 
-    // Set home state robot
-    ret = arm_robot_home_state(&robot);
+    // TODO: почему то при не инициализации сервов, нулевой вольтаж получается нормальным с погрешностью в 5-10 mV
+    ret = servo_pca9685_set_angle(&robot.manipulator.base_servo, SERVO_BASE_START_ANGLE, PWM_FREQUENCY);
     if (ret != ESP_OK) {
         return;
     }
-    printf("Arm robot initialize\n");
+    vTaskDelay(pdMS_TO_TICKS(20));
 
-    // Set up USB Serial JTAG
+    ret = servo_pca9685_set_angle(&robot.manipulator.shoulder_servo, SERVO_SHOULDER_START_ANGLE, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        return;
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    ret = servo_pca9685_set_angle(&robot.manipulator.elbow_servo, SERVO_ELBOW_START_ANGLE, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        return;
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    ret = servo_pca9685_set_angle(&robot.manipulator.wrist_servo, SERVO_WRIST_START_ANGLE, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        return;
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    ret = servo_pca9685_set_angle(&robot.arm.wrist_rot_servo, SERVO_WRIST_ROT_START_ANGLE, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        return;
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    ret = servo_pca9685_set_angle(&robot.arm.gripper.gripper_servo, SERVO_GRIPPER_START_ANGLE, PWM_FREQUENCY);
+    if (ret != ESP_OK) {
+        return;
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    // TODO: доработать данную функцию с учетом загрузки с памяти углы
+    // ret = arm_robot_home_state(&robot);
+    // if (ret != ESP_OK) {
+    //     ESP_LOGE(TAG, "Robot is not set home position");
+    //     return;
+    // }
+    ESP_LOGI(TAG, "Robot is in home position");
+    // End
+
+    // Initialize USB Serial JTAG
     usb_serial_jtag_driver_config_t usb_serial_jtag_config = {
-        .rx_buffer_size = BUF_SIZE,
-        .tx_buffer_size = BUF_SIZE
+        .rx_buffer_size = 128,
+        .tx_buffer_size = 128
     };
     ret = usb_serial_jtag_driver_install(&usb_serial_jtag_config);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "USB Serial JTAG initialized failed");
         return;
     }
 
     esp_vfs_usb_serial_jtag_use_driver();
-    printf("USB Serial JTAG initialize\n");
-    
+    ESP_LOGI(TAG, "USB Serial JTAG initialized successfully");
+    // End
+
     // Main
+    // Задача для отправки данных о силе тока
+    // xTaskCreate(send_current_task, "Send Current Task", 4096, NULL, 5, NULL);
+
+    // Задача для приема команд по USB Serial JTAG
     xTaskCreate(usb_serial_task, "USB Serial Task", 4096, NULL, 5, NULL);
-
-    // xTaskCreate(usb_serial_send_current, "USB Serial send current Task", TASK_STACK_SIZE * 2, NULL, 5, NULL);
-
-    // Deinit
-    // ret = pca9685_deinit(&pca9685);
-    // if (ret != ESP_OK) {
-    //     return;
-    // }
-
-    // ret = acs712_deinit(&acs712);
-    // if (ret != ESP_OK) {
-    //     return;
-    // }
+    // End
 }
