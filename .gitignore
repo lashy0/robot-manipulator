@@ -13,5 +13,5 @@ env
 
 __pycache__
 
-esp_new
-old_commponents
+code/
+esp_project_old/
