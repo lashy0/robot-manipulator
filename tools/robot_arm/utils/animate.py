@@ -6,11 +6,12 @@ from matplotlib.animation import FuncAnimation
 from .plot import RobotArm3DPlot
 
 
-def robot_arm_animate(
+def robot_arm_animate_show(
     robot_arm: RobotArm3DPlot,
     angle_seq: List[np.ndarray],
     interval: int = 100,
-    repeat: bool = True
+    repeat: bool = True,
+    **kwargs
 ) -> None:
     """
     Animates the robotic arm motion using a RobotArm3DPlot object.
@@ -25,12 +26,16 @@ def robot_arm_animate(
         robot_arm.plot(angle_seq[frame])
         plt.draw()
     
+    if not all(len(angles) == len(robot_arm.chain) for angles in angle_seq):
+        raise ValueError("Each array of angles in angle_seq must correspond to the number of robot_arm links.")
+    
     ani = FuncAnimation(
         robot_arm.fig,
         update,
         frames=len(angle_seq),
         interval=interval,
-        repeat=repeat
+        repeat=repeat,
+        **kwargs
     )
 
     robot_arm.show()

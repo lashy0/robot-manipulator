@@ -62,3 +62,18 @@ class Logger:
 
         return logger
     
+    @classmethod
+    def configure_logger_for_module(cls, module_name: str, level: str = 'DEBUG'):
+        """Configure a logger for a specific module with a given log level"""
+        instance = cls()
+        logger = logging.getLogger(module_name)
+        log_level = cls.LOG_LEVELS.get(level.upper(), logging.DEBUG)
+        logger.setLevel(log_level)
+
+        if not logger.hasHandlers():
+            console_handle = instance._create_console_handler(log_level)
+            logger.addHandler(console_handle)
+            logger.addHandler(console_handle)
+        
+        logger.propagate = False
+        return logger

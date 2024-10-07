@@ -16,8 +16,7 @@ class RobotArm3DPlot:
         xlim (Tuple[float, float]): Limits for the X-axis in the plot.
         ylim (Tuple[float, float]): Limits for the Y-axis in the plot.
         zlim (Tuple[float, float]): Limits for the Z-axis in the plot.
-        fig (Figure, optional): The matplotlib figure object. If None, a new figure is created.
-        ax (Axes3D, optional): The 3D axes object for plotting. If None, new axes are created.
+        initial_angles (Optional[np,ndarray]): Initial joint angles for the robotic arm.
     """
     def __init__(
         self,
@@ -25,19 +24,18 @@ class RobotArm3DPlot:
         xlim: Tuple[float, float] = (-0.5, 0.5),
         ylim: Tuple[float, float] = (-0.5, 0.5),
         zlim: Tuple[float, float] = (0, 0.5),
-        fig: Optional[Figure] = None,
-        ax: Optional[Axes3D] = None,
+        initial_angles: Optional[np.ndarray] = None
     ) -> None:
         self.chain = chain
         self.xlim = xlim
         self.ylim = ylim
         self.zlim = zlim
 
-        if fig is None or ax is None:
-            self.fig, self.ax = self._init_plot()
-        # TODO: если передавать, то он должен быть настроен
-        else:
-            self.fig, self.ax = fig, ax
+        if initial_angles is None:
+            initial_angles = np.zeros(len(self.chain))
+        self.initial_angles = initial_angles
+
+        self.fig, self.ax = self._init_plot()
 
         # Initialize graphical elements (lines, scatter points, axes)
         self._init_plot_elements()
@@ -79,15 +77,12 @@ class RobotArm3DPlot:
         including the arm links, joints, and the coordinate axes at the end effector.
         """
         # Get initial joint positions with zero angles
-        initial_angles = np.zeros(len(self.chain))
-        frames = self.chain.forward_kinematics(initial_angles, full_kinematics=True)
+        frames = self.chain.forward_kinematics(self.initial_angles, full_kinematics=True)
         # Extract positions from transformation matrices
-        positions = [frame[:3, 3] for frame in frames]
+        positions = np.array([frame[:3, 3] for frame in frames])
 
         # XYZ coordinates
-        xs = [pos[0] for pos in positions]
-        ys = [pos[1] for pos in positions]
-        zs = [pos[2] for pos in positions]
+        xs, ys, zs = positions[:, 0], positions[:, 1], positions[:, 2]
 
         # Create a line object to represent the robot arm links
         (self.line,) = self.ax.plot(xs, ys, zs, linewidth=5, label="Robot Arm")
@@ -96,12 +91,11 @@ class RobotArm3DPlot:
         self.scatter = self.ax.scatter(xs, ys, zs, s=55, c=self.line.get_color())
 
         # Initialize lines for the coordinate axes at the end effector
-        self.tip_axes = []
         directions_colors = ["green", "cyan", "orange"]  # Цвета для осей X, Y, Z
-        for color in directions_colors:
-            # Create empty lines for axes, to be updated later
-            line, = self.ax.plot([], [], [], linestyle='dashed', c=color)
-            self.tip_axes.append(line)
+        self.tip_axes = [
+            self.ax.plot([], [], [], linestyle='dashed', c=color)[0]
+            for color in directions_colors
+        ]
 
     def plot(self, angles: np.ndarray) -> None:
         """
@@ -118,18 +112,17 @@ class RobotArm3DPlot:
          # Compute new joint positions
         frames = self.chain.forward_kinematics(angles, full_kinematics=True)
         # Extract positions
-        positions = [frame[:3, 3] for frame in frames]
+        positions = np.array([frame[:3, 3] for frame in frames])
 
         # XYZ coordinates
-        xs = [pos[0] for pos in positions]
-        ys = [pos[1] for pos in positions]
-        zs = [pos[2] for pos in positions]
+        xs, ys, zs = positions[:, 0], positions[:, 1], positions[:, 2]
 
         # Update the line data (robot arm links)
-        self.line.set_data(xs, ys)
-        self.line.set_3d_properties(zs)
+        self.line.set_data_3d(xs, ys, zs)
 
         # Update the scatter data (robot arm joints)
+        # self.scatter.set_offsets(np.c_[xs, ys])
+        # self.scatter.set_3d_properties(zs, 'z')
         self.scatter._offsets3d = (xs, ys, zs)
 
         # Update the coordinate axes at the end effector
@@ -146,11 +139,7 @@ class RobotArm3DPlot:
         axis_length = 0.1
 
         # Calculate the end points for the X, Y, Z axes
-        x_axis_end = position + rotation[:, 0] * axis_length
-        y_axis_end = position + rotation[:, 1] * axis_length
-        z_axis_end = position + rotation[:, 2] * axis_length
-
-        axes_ends = [x_axis_end, y_axis_end, z_axis_end]
+        axes_ends = [position + rotation[:, i] * axis_length for i in range(3)]
 
         # Update the data for each axis line
         for idx, axis_line in enumerate(self.tip_axes):
@@ -177,3 +166,26 @@ class RobotArm3DPlot:
     def draw(self) -> None:
         """Refreshes and displays the current state of the plot."""
         plt.draw()
+    
+    def set_view(self, elev: float, azim: float) -> None:
+        """
+        Sets the view of the graph with the specified viewing angle.
+
+        Args:
+            elev (float): Height above the graph
+            azim (float): The angle of rotation of the camera
+        """
+        self.ax.view_init(elev=elev, azim=azim)
+    
+    # TODO: вариант анимации уже по готовым углам, но тут надо проверять
+    def animate(self, angles_seq: np.ndarray, interval: float = 0.05) -> None:
+        """
+        Animates the manipulator, smoothly switching between the specified positions of the joints.
+
+        Args:
+            angles_seq (np.ndarray): A sequence of arrays of joint angles
+            interval (float): The interval between animation steps in seconds
+        """
+        for angles in angles_seq:
+            self.plot(angles)
+            plt.pause(interval)
