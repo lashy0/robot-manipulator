@@ -5,7 +5,7 @@ from .logger import Logger
 
 
 class SerialDevice:
-    def __init__(self, port: str, baudrate: int = 9600, timeout: float = 1.0):
+    def __init__(self, port: str = None, baudrate: int = 9600, timeout: float = 1.0):
         self._serial = None
         self.port = port
         self.baudrate = baudrate
@@ -16,7 +16,14 @@ class SerialDevice:
     def is_connected(self) -> bool:
         return self._serial and self._serial.is_open
     
-    def connect(self) -> None:
+    def connect(self, port: str = None) -> None:
+        if port:
+            self.port = port
+        
+        if self.port:
+            self._logger.error("No COM port specified")
+            return
+
         if not self.is_connected():
             try:
                 self._serial = serial.Serial(self.port, self.baudrate, timeout=self.timeout)
@@ -29,10 +36,15 @@ class SerialDevice:
             self._serial.close()
             self._logger.debug(f"Disconnected from {self.port}")
     
-    def reconnect(self) -> None:
-        self.disconnect()
-        time.sleep(1)
-        self.connect()
+    def reconnect(self, retrise: int = 3, delay: float = 1.0) -> None:
+        for attempt in range(retrise):
+            self.disconnect()
+            time.sleep(delay)
+            self.connect()
+            if self.is_connected():
+                self._logger.debug(f"Reconnected to {self.port} on attempt {attempt + 1}")
+                return
+            self._logger.error(f"Failed to reconnect to {self.port} after {retrise} attempts")
     
     def write_data(self, data: str, timeout: float = None) -> None:
         """Writes data to the serial device"""
@@ -45,7 +57,7 @@ class SerialDevice:
             except serial.SerialException as e:
                 self._logger.error(f"Failed to write data: {e}")
         else:
-            self._logger.debug("Device is not connected")
+            self._logger.error(f"Device {self.port} is not connected")
     
     def read_data(self, timeout: float = None) -> str:
         """Reads data from the serial device"""
@@ -57,10 +69,10 @@ class SerialDevice:
                 self._logger.debug(f"Received: {data}")
                 return data
             except serial.SerialException as e:
-                self._logger.warning(f"Failed to read data: {e}")
+                self._logger.error(f"Failed to read data: {e}")
                 return ""
         else:
-            self._logger.debug("Device is not connected")
+            self._logger.error(f"Device {self.port} is not connected")
             return ""
     
     def flush_input(self) -> None:
