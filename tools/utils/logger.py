@@ -54,7 +54,6 @@ class Logger:
 
         if not logger.hasHandlers():
             console_handler = self._create_console_handler(logging.DEBUG)
-
             logger.addHandler(console_handler)
 
         # Prevent the logger from propagating to the root logger
@@ -72,7 +71,6 @@ class Logger:
 
         if not logger.hasHandlers():
             console_handle = instance._create_console_handler(log_level)
-            logger.addHandler(console_handle)
             logger.addHandler(console_handle)
         
         logger.propagate = False

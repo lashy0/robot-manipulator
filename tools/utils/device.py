@@ -11,7 +11,7 @@ class SerialDevice:
         self.baudrate = baudrate
         self.timeout = timeout
 
-        self._logger = Logger().get_logger("SerialDevice", level="DEBUG")
+        self._logger = Logger().get_logger("SerialDevice", level="ERROR")
     
     def is_connected(self) -> bool:
         return self._serial and self._serial.is_open
@@ -20,7 +20,7 @@ class SerialDevice:
         if port:
             self.port = port
         
-        if self.port:
+        if not self.port:
             self._logger.error("No COM port specified")
             return
 
