@@ -6,6 +6,14 @@ from PyQt5.QtCore import QTimer, pyqtSignal
 
 
 class SerialPortSelector(QWidget):
+    """
+    Widget for selecting and connecting to a serial COM port.
+
+    Attributes:
+        connect_signal (pyqtSignal): Signal emitted when a connection is requested, with the selected COM port as argument.
+        disconnect_signal (pyqtSignal): Signal emitted when a disconnection is requested.
+        connection_result_signal (pyqtSignal): Signal emitted to indicate the result of a connection attempt.
+    """
     connect_signal = pyqtSignal(str)
     disconnect_signal = pyqtSignal()
     connection_result_signal = pyqtSignal(bool)
@@ -40,6 +48,9 @@ class SerialPortSelector(QWidget):
         self.connection_result_signal.connect(self.handle_connection_result)
     
     def update_com_ports(self) -> None:
+        """
+        Updates the list of available COM ports in the combo box.
+        """
         current_ports = set(port.device for port in list_ports.comports())
         existing_ports = set(self.combobox.itemText(i) for i in range(self.combobox.count()))
 
@@ -49,6 +60,10 @@ class SerialPortSelector(QWidget):
             self.combobox.addItems(current_ports)
     
     def handle_button(self) -> None:
+        """
+        Handles the Connect/Disconnect button click event.
+        Emits the appropriate signal based on the current state.
+        """
         if self.button.text() == "Connect":
             selected_port = self.combobox.currentText().strip()
             if selected_port and selected_port != "Select COM port":
@@ -57,6 +72,13 @@ class SerialPortSelector(QWidget):
             self.disconnect_signal.emit()
     
     def handle_connection_result(self, success: bool) -> None:
+        """
+        Handles the result of a connection attempt.
+        Updates the button text based on the connection result.
+
+        Args:
+            success (bool): True if the connection was successful, False otherwise.
+        """
         if success:
             self.button.setText("Disconnect")
         else:
