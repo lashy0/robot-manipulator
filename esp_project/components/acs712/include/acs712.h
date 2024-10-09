@@ -45,6 +45,17 @@ esp_err_t acs712_init(acs712_t *acs712, adc_unit_t unit, adc_atten_t atten, adc_
 esp_err_t acs712_deinit(acs712_t *acs712);
 
 /**
+ * @brief Calibrate the zero-point voltage of the ACS712 sensor.
+ * 
+ * @param[in] acs712 Pointer to the ACS712 sensor structure
+ * @param[in] samples Number of samples to average for calibration.
+ * 
+ * @return ESP_OK on success
+ * @return ESP_FAIL if the reading or conversion fails
+ */
+esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples);
+
+/**
  * @brief Recalibrate the ACS712 current sensor
  * 
  * @param[in] acs712 Pointer to the ACS712 sensor structure

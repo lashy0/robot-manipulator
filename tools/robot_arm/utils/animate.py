@@ -1,8 +1,7 @@
 import numpy as np
-from typing import List
+from typing import List, Optional
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from typing import Optional
 
 from .plot import RobotArm3DPlot
 
@@ -24,6 +23,9 @@ def robot_arm_animate_show(
         repeat (Optional[bool]): Whether the animation should repeat after completing.
         show_trajectory (Optional[bool]): Whether to display the trajectory to the target point.
     """
+    if not all(len(angles) == len(robot_arm.chain) for angles in angle_seq):
+        raise ValueError("Each array of angles in angle_seq must correspond to the number of robot_arm links.")
+    
     if show_trajectory:
         # Plot the trajectory line up to the current frame
         trajectory_points = [robot_arm.chain.forward_kinematics(angles)[:3, 3] for angles in angle_seq]
@@ -40,9 +42,6 @@ def robot_arm_animate_show(
     def update(frame: int) -> None:
         robot_arm.plot(angle_seq[frame])
         plt.draw()
-    
-    if not all(len(angles) == len(robot_arm.chain) for angles in angle_seq):
-        raise ValueError("Each array of angles in angle_seq must correspond to the number of robot_arm links.")
     
     ani = FuncAnimation(
         robot_arm.fig,

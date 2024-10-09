@@ -141,6 +141,34 @@ esp_err_t acs712_deinit(acs712_t *acs712)
     return ESP_OK;
 }
 
+esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples)
+{
+    esp_err_t ret;
+    int raw;
+    int voltage;
+    int sum = 0;
+
+    for (int i = 0; i < samples; i++) {
+        if (acs712_read_raw(acs712, &raw) == ESP_OK) {
+            sum += raw;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        else {
+            return ESP_FAIL;
+        }
+    }
+
+    ret = adc_cali_raw_to_voltage(acs712->cali_handle, sum / samples, &voltage);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
+
+    acs712->calibrate_voltage = voltage;
+
+    return ESP_OK;
+}
+
 esp_err_t acs712_recalibrate(acs712_t *acs712)
 {
     if (!acs712) {
@@ -207,9 +235,9 @@ esp_err_t acs712_read_voltage(acs712_t *acs712, int *data)
         return ESP_FAIL;
     }
     // No calibrated ADC
-    else {
-        voltage = 0;
-    }
+    // else {
+    //     voltage = 0;
+    // }
 
     *data = voltage;
 

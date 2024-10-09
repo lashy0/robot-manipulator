@@ -3,10 +3,10 @@ from PyQt5.QtWidgets import (
     QApplication, QMessageBox
 )
 
-from ..utils.device import SerialDevice
-from ..utils.logger import Logger
+from ...utils.device import SerialDevice
+from ...utils.logger import Logger
 
-from .components import SerialPortSelector
+from ..components import SerialPortSelector
 
 
 class DeviceHandler:
