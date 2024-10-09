@@ -165,6 +165,7 @@ esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples)
         ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
         return ESP_FAIL;
     }
+    // TODO: а может быть случай, когда не было калибровки ADC?
 
     acs712->calibrate_voltage = voltage;
 
@@ -236,10 +237,6 @@ esp_err_t acs712_read_voltage(acs712_t *acs712, int *data)
         ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
         return ESP_FAIL;
     }
-    // No calibrated ADC
-    // else {
-    //     voltage = 0;
-    // }
 
     *data = voltage;
 

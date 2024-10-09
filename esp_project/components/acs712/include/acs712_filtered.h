@@ -35,6 +35,17 @@ esp_err_t acs712_read_filtered_voltage(acs712_t *acs712, int *data);
  * @return ESP_OK on success
  * @return ESP_FAIL if the calculation fails or sensitivity is zero
  */
-esp_err_t acs712_read_filterd_current(acs712_t *acs712, float *data);
+esp_err_t acs712_read_filtered_current(acs712_t *acs712, float *data);
+
+/**
+ * @brief Calibrate the filtered zero-point voltage of the ACS712 sensor.
+ * 
+ * @param[in] acs712 Pointer to the ACS712 sensor structure
+ * @param[in] samples Number of samples to average for calibration.
+ * 
+ * @return ESP_OK on success
+ * @return ESP_FAIL if the reading or conversion fails
+ */
+esp_err_t acs712_calibrate_filtered_voltage(acs712_t *acs712, int samples);
 
 #endif

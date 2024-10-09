@@ -46,7 +46,7 @@ esp_err_t acs712_read_filtered_voltage(acs712_t *acs712, int *data)
     return ESP_OK;
 }
 
-esp_err_t acs712_read_filterd_current(acs712_t *acs712, float *data)
+esp_err_t acs712_read_filtered_current(acs712_t *acs712, float *data)
 {
      if (acs712->sensitivity == 0) {
         ESP_LOGE(TAG, "Sensitivity is zero, cannot calculate current");
@@ -64,6 +64,34 @@ esp_err_t acs712_read_filterd_current(acs712_t *acs712, float *data)
     *data = (float)(voltage - acs712->calibrate_voltage) / acs712->sensitivity;
 
     ESP_LOGI(TAG, "Voltage: %d mV\tCalibrate Voltage %d mV\tCurrent: %2f A\n", voltage, acs712->calibrate_voltage, *data);
+
+    return ESP_OK;
+}
+
+esp_err_t acs712_calibrate_filtered_voltage(acs712_t *acs712, int samples)
+{
+    esp_err_t ret;
+    int raw;
+    int voltage;
+    int sum = 0;
+
+    for (int i = 0; i < samples; i++) {
+        if (acs712_read_filtered_raw(acs712, &raw) == ESP_OK) {
+            sum += raw;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        else {
+            return ESP_FAIL;
+        }
+    }
+
+    ret = adc_cali_raw_to_voltage(acs712->cali_handle, sum / samples, &voltage);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
+    }
+
+    acs712->calibrate_voltage = voltage;
 
     return ESP_OK;
 }
