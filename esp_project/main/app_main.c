@@ -31,36 +31,6 @@ acs712_t acs712;
 
 float current;
 
-// Фильтр среднего
-esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples)
-{
-    esp_err_t ret;
-    int raw;
-    int voltage;
-    int sum = 0;
-
-    for (int i = 0; i < samples; i++) {
-        if (acs712_read_raw(acs712, &raw) == ESP_OK) {
-            sum += raw;
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
-        else {
-            return ESP_FAIL;
-        }
-    }
-
-    ret = adc_cali_raw_to_voltage(acs712->cali_handle, sum / samples, &voltage);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
-        return ESP_FAIL;
-    }
-
-    acs712->calibrate_voltage = voltage;
-
-    return ESP_OK;
-}
-// End
-
 // Вариант функции движения с использованием ACS712
 static void move_manipulator_task(void *arg)
 {
@@ -280,6 +250,7 @@ static void usb_serial_task(void *arg)
 void app_main()
 {
     // Set level log
+    esp_log_level_set("app_main", ESP_LOG_WARN);
     esp_log_level_set("servo_pca9685", ESP_LOG_WARN);
     esp_log_level_set("arm_robot", ESP_LOG_WARN);
     esp_log_level_set("acs712", ESP_LOG_WARN);
