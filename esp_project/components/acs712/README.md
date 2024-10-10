@@ -184,7 +184,7 @@ esp_err_t acs712_read_filtered_current(acs712_t *acs712, float *data)
 для получения корректных показаний при отсутствии тока.
 
 ```c
-esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples)
+esp_err_t acs712_calibrate_filtered_voltage(acs712_t *acs712, int samples)
 ```
 
 Параметры:
