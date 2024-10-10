@@ -4,6 +4,7 @@
 
 static const char *TAG = "pca9685";
 
+// TODO: заменить -1 на настраиваемое значение 
 esp_err_t pca9685_write(pca9685_t *pca9685, uint8_t reg, uint8_t data)
 {
     esp_err_t ret;
@@ -31,13 +32,11 @@ esp_err_t pca9685_read(pca9685_t *pca9685, uint8_t reg, uint8_t *data)
     return ESP_OK;
 }
 
-// TODO: проверки какие то мб?
 void pca9685_set_osc_freq(pca9685_t *pca9685, uint32_t freq)
 {
     pca9685->oscillator_freq = freq;
 }
 
-// TODO: тоже добавить провекрки, но какие?
 void pca9685_get_osc_freq(pca9685_t *pca9685, uint32_t *freq)
 {
     *freq = pca9685->oscillator_freq;
@@ -47,7 +46,7 @@ esp_err_t pca9685_init(pca9685_config_t *config, pca9685_t *pca9685)
 {
     if (pca9685->is_initialized) {
         ESP_LOGW(TAG, "I2C device is already initialized");
-        return ESP_FAIL;
+        return ESP_ERR_INVALID_STATE;
     }
 
     esp_err_t ret;
@@ -61,8 +60,8 @@ esp_err_t pca9685_init(pca9685_config_t *config, pca9685_t *pca9685)
     // Add the PCA9685 device to the I2C bus
     ret = i2c_master_bus_add_device(config->bus_handle, &i2c_dev_config, &pca9685->i2c_dev);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to add PCA9685 device to I2C bus");
-        return ret;
+        ESP_LOGE(TAG, "Failed to add PCA9685 device to I2C bus: %s", esp_err_to_name(ret));
+        return ESP_FAIL;
     }
 
     pca9685->is_initialized = true;
@@ -70,14 +69,13 @@ esp_err_t pca9685_init(pca9685_config_t *config, pca9685_t *pca9685)
      ret = pca9685_write(pca9685, PCA9685_MODE1, 0x00);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize PCA9685");
-        return ret;
+        return ESP_FAIL;
     }
 
     // Set default value on the structure PCA9685
     pca9685_set_osc_freq(pca9685, FREQUENCY_OSCILLATOR);
 
-    // TODO: назначение prescale в init?
-    pca9685_set_pwm_freq(pca9685, 1000);
+    pca9685_set_pwm_freq(pca9685, 50);
 
     return ESP_OK;
 }
@@ -86,14 +84,14 @@ esp_err_t pca9685_deinit(pca9685_t *pca9685)
 {
     if (pca9685->is_initialized) {
         ESP_LOGE(TAG, "I2C device is not initialized");
-        return ESP_FAIL;
+        return ESP_ERR_INVALID_STATE;
     }
 
     esp_err_t ret;
 
     ret = i2c_master_bus_rm_device(pca9685->i2c_dev);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to remove PCA9685 device");
+        ESP_LOGE(TAG, "Failed to remove PCA9685 device: %s", esp_err_to_name(ret));
         return ESP_FAIL;
     }
 
@@ -107,7 +105,7 @@ esp_err_t pca9685_reset(pca9685_t *pca9685)
     ret = pca9685_write(pca9685, PCA9685_MODE1, MODE1_RESTART);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write RESTART bit to MODE1 register");
-        return ret;
+        return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "PCA9685 reset");
@@ -123,13 +121,13 @@ esp_err_t pca9685_sleep(pca9685_t *pca9685)
     ret = pca9685_read(pca9685, PCA9685_MODE1, &mode);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read data MODE1 register");
-        return ret;
+        return ESP_FAIL;
     }
 
     ret = pca9685_write(pca9685, PCA9685_MODE1, mode | MODE1_SLEEP);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write SLEEP bit to MODE register");
-        return ret;
+        return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "PCA9685 in sleep mode");
@@ -145,13 +143,13 @@ esp_err_t pca9685_wake(pca9685_t *pca9685)
     ret = pca9685_read(pca9685, PCA9685_MODE1, &mode);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read data MODE1 register");
-        return ret;
+        return ESP_FAIL;
     }
 
     ret = pca9685_write(pca9685, PCA9685_MODE1, mode & ~MODE1_SLEEP);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to cleare SLEEP bit in MODE1 register");
-        return ret;
+        return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "PCA9685 in now awake");
@@ -214,32 +212,32 @@ esp_err_t pca9685_set_pwm_freq(pca9685_t *pca9685, float freq)
 
     ret = pca9685_read(pca9685, PCA9685_MODE1, &old_mode);
     if (ret != ESP_OK) {
-        return ret;
+        return ESP_FAIL;
     }
 
     new_mode = (old_mode & ~MODE1_RESTART) | MODE1_SLEEP;
     ret = pca9685_write(pca9685, PCA9685_MODE1, new_mode);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set sleep mode");
-        return ret;
+        return ESP_FAIL;
     }
 
     ret = pca9685_write(pca9685, PCA9685_PRESCALE, prescale);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set prescaler");
-        return ret;
+        return ESP_FAIL;
     }
 
     ret = pca9685_write(pca9685, PCA9685_MODE1, old_mode);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to restore MODE1 register");
-        return ret;
+        return ESP_FAIL;
     }
 
     ret = pca9685_write(pca9685, PCA9685_MODE1, old_mode | MODE1_RESTART | MODE1_AI);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set MODE1 register to rurn on auto increment");
-        return ret;
+        return ESP_FAIL;
     }
 
     ESP_LOGI(TAG, "PWM frequency set to %.2f", freq);

@@ -37,6 +37,9 @@ typedef struct {
     uint32_t scl_speed;                     /**< I2C clock speed */
 } pca9685_config_t;
 
+/**
+ * @brief PCA9685 device structure
+ */
 typedef struct {
     i2c_master_dev_handle_t i2c_dev;
     uint32_t oscillator_freq;
@@ -50,7 +53,8 @@ typedef struct {
  * @param[in] reg Register address to write
  * @param[in] data Data bytes to write
  * 
- * @return ESP_OK Success, or ESP_FAIL
+ * @return ESP_OK on success
+ * @return ESP_FAIL if failed to write data
  */
 esp_err_t pca9685_write(pca9685_t *pca9685, uint8_t reg, uint8_t data);
 
@@ -61,7 +65,8 @@ esp_err_t pca9685_write(pca9685_t *pca9685, uint8_t reg, uint8_t data);
  * @param[in] reg Register address to write
  * @param[out] data Pointer to store the data
  * 
- * @return ESP_OK Success, or ESP_FAIL
+ * @return ESP_OK on success
+ * @return ESP_FAIL if failed to read data
  */
 esp_err_t pca9685_read(pca9685_t *pca9685, uint8_t reg, uint8_t *data);
 
@@ -71,7 +76,9 @@ esp_err_t pca9685_read(pca9685_t *pca9685, uint8_t reg, uint8_t *data);
  * @param[in] config Pointer configuration structure for PCA9685
  * @param[in] pca9685 Pointer to the PCA9685 structure
  * 
- * @return ESP_OK Success, or ESP_FAIL 
+ * @return ESP_OK on success
+ * @return ESP_ERR_INVALID_STATE if device already initialized
+ * @return ESP_FAIL if failed to initialize the device
  */
 esp_err_t pca9685_init(pca9685_config_t *config, pca9685_t *pca9685);
 
@@ -80,7 +87,9 @@ esp_err_t pca9685_init(pca9685_config_t *config, pca9685_t *pca9685);
  * 
  * @param[in] pca9685 Pointer to the PCA9685 structure
  * 
- * @return ESP_OK Success, 
+ * @return ESP_OK on success
+ * @return ESP_ERR_INVALID_STATE if device not initialize
+ * @return ESP_FAIL if failed to remove device
  */
 esp_err_t pca9685_deinit(pca9685_t *pca9685);
 
@@ -89,7 +98,8 @@ esp_err_t pca9685_deinit(pca9685_t *pca9685);
  * 
  * @param[in] pca9685 Pointer to the PCA9685 structure
  * 
- * @return ESP_OK Success, or ESP_FAIL 
+ * @return ESP_OK on success
+ * @return ESP_FAIL if failed to reset the device
  */
 esp_err_t pca9685_reset(pca9685_t *pca9685);
 
@@ -98,7 +108,8 @@ esp_err_t pca9685_reset(pca9685_t *pca9685);
  * 
  * @param[in] pca9685 Pointer to the PCA9685 structure
  * 
- * @return ESP_OK Success, or ESP_FAIL
+ * @return ESP_OK on success
+ * @return ESP_FAIL if failed to put the device into sleep mode
  */
 esp_err_t pca9685_sleep(pca9685_t *pca9685);
 
@@ -107,7 +118,8 @@ esp_err_t pca9685_sleep(pca9685_t *pca9685);
  * 
  * @param[in] pca9685 Pointer to the PCA9685 structure
  * 
- * @return ESP_OK Success, or ESP_FAIL
+ * @return ESP_OK on success
+ * @return ESP_FAIL if failed to wake up the device
  */
 esp_err_t pca9685_wake(pca9685_t *pca9685);
 
@@ -119,7 +131,8 @@ esp_err_t pca9685_wake(pca9685_t *pca9685);
  * @param[out] on_time Pointer to store the retrieved on_time value (0 to 4095)
  * @param[out] off_time Pointer to store the retrived off_time value (0 to 4095)
  * 
- * @return ESP_OK Success, or ESP_FAIL
+ * @return ESP_OK on success
+ * @return ESP_FAIL if failed to read PWM values
  */
 esp_err_t pca9685_get_pwm(pca9685_t *pca9685, uint8_t channel, uint16_t *on_time, uint16_t *off_time);
 
@@ -131,7 +144,8 @@ esp_err_t pca9685_get_pwm(pca9685_t *pca9685, uint8_t channel, uint16_t *on_time
  * @param[in] on_time The time (0 to 4095) when the PWM signal shoukd turn on
  * @param[in] off_time The time (0 to 4095) when the PWM signal shoukd turn off
  * 
- * @return ESP_OK Success, or ESP_FAIL
+ * @return ESP_OK on success
+ * @return ESP_FAIL if failed to set PWM values
  */
 esp_err_t pca9685_set_pwm(pca9685_t *pca9685, uint8_t channel, uint16_t on_time, uint16_t off_time);
 
@@ -141,7 +155,8 @@ esp_err_t pca9685_set_pwm(pca9685_t *pca9685, uint8_t channel, uint16_t on_time,
  * @param[in] pca9685 Pointer to the PCA9685 structure
  * @param[in] freq Desired PWM frequence in Hz
  * 
- * @return ESP_OK Success, or ESP_FAIL
+ * @return ESP_OK on success
+ * @return ESP_FAIL if failed to set PWM frequency
  */
 esp_err_t pca9685_set_pwm_freq(pca9685_t *pca9685, float freq);
 

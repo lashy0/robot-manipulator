@@ -209,14 +209,14 @@ void app_main(void)
 
     // Инициализация датчика
     ret = acs712_init(&acs712, ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_CHANNEL_2, 185.0);
-    if (ret == ESP_OK) {
-        ESP_LOGI("APP", "Датчик успешно инициализирован");
+    if (ret != ESP_OK) {
+        return;
     }
 
     // Калибровка нулевого значения
     ret = acs712_calibrate_voltage(&acs712, 50);
-    if (ret == ESP_OK) {
-        ESP_LOGI("APP", "Калибровка завершена успешно");
+    if (ret != ESP_OK) {
+        return;
     }
 
     // Чтение тока
