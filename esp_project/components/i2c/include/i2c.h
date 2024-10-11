@@ -30,7 +30,10 @@ typedef struct {
  * 
  * @param[in] bus Pointer to the I2C bus structure
  * @param[in] config Pointer to the I2C configuration structure
- * @return ESP_OK if successful, or ESP_FAIL
+ * 
+ * @return ESP_OK on success
+ * @return ESP_ERR_INVALID_STATE if I2C bus initialized
+ * @return ESP_FAIL if failed initialized
  */
 esp_err_t i2c_master_init(i2c_bus_t *bus, const i2c_config_bus_t *config);
 
@@ -39,7 +42,9 @@ esp_err_t i2c_master_init(i2c_bus_t *bus, const i2c_config_bus_t *config);
  * 
  * @param[in] bus Pointer to I2C bus structure
  * 
- * @return ESP_OK if successful, or ESP_FAIL
+ * @return ESP_OK on success
+ * @return ESP_ERR_INVALID_STATE if I2C bus not initialize
+ * @return ESP_FAIL if faled deinitialization
  */
 esp_err_t i2c_master_deinit(i2c_bus_t *bus);
 

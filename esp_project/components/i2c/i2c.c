@@ -8,7 +8,7 @@ esp_err_t i2c_master_init(i2c_bus_t *bus, const i2c_config_bus_t *config)
 {
     if (bus->is_initialized) {
         ESP_LOGW(TAG, "I2C bus is already initialized");
-        return ESP_FAIL;
+        return ESP_ERR_INVALID_STATE;
     }
     
     esp_err_t ret;
@@ -39,7 +39,7 @@ esp_err_t i2c_master_deinit(i2c_bus_t *bus)
 {
     if (!bus->is_initialized) {
         ESP_LOGW(TAG, "I2C bus is not initialized");
-        return ESP_FAIL;
+        return ESP_ERR_INVALID_STATE;
     }
 
     esp_err_t ret = i2c_del_master_bus(bus->handle);
