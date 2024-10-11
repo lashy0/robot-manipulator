@@ -32,18 +32,19 @@
  * @brief Config structure for PCA9685 driver
  */
 typedef struct {
-    uint8_t i2c_address;                    /**< I2C address of the PCA9685 device */
-    i2c_master_bus_handle_t bus_handle;     /**< I2C bus handle */
-    uint32_t scl_speed;                     /**< I2C clock speed */
+    uint8_t i2c_address;                /**< I2C address of the PCA9685 device */
+    i2c_master_bus_handle_t bus_handle; /**< I2C bus handle */
+    uint32_t scl_speed;                 /**< I2C clock speed */
 } pca9685_config_t;
 
 /**
  * @brief PCA9685 device structure
  */
 typedef struct {
-    i2c_master_dev_handle_t i2c_dev;
-    uint32_t oscillator_freq;
-    bool is_initialized;
+    i2c_master_dev_handle_t i2c_dev; /**< Handle for the I2C device */
+    uint32_t oscillator_freq;        /**< Frequency of the PCA9685 oscillator  */
+    float pwm_freq;                  /**< Indicates if the device is initialized */
+    bool is_initialized;             /**< The PWM frequency in Hz */
 } pca9685_t;
 
 /**

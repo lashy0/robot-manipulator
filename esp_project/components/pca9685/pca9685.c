@@ -198,6 +198,11 @@ esp_err_t pca9685_set_pwm(pca9685_t *pca9685, uint8_t channel, uint16_t on_time,
 
 esp_err_t pca9685_set_pwm_freq(pca9685_t *pca9685, float freq)
 {
+    if (freq <= 0.0) {
+        ESP_LOGE(TAG, "Inwalid PWM frequency: %.2f. Must be greater than 0", freq);
+        return ESP_ERR_INVALID_ARG;
+    }
+
     esp_err_t ret;
     uint8_t old_mode;
     uint8_t new_mode;
@@ -239,6 +244,8 @@ esp_err_t pca9685_set_pwm_freq(pca9685_t *pca9685, float freq)
         ESP_LOGE(TAG, "Failed to set MODE1 register to rurn on auto increment");
         return ESP_FAIL;
     }
+
+    pca9685->pwm_freq = freq;
 
     ESP_LOGI(TAG, "PWM frequency set to %.2f", freq);
 

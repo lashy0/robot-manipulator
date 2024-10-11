@@ -57,6 +57,8 @@ esp_err_t servo_pca9685_set_angle(servo_t *servo, float angle, float pwm_freq)
         return ESP_FAIL;
     }
 
+    servo->current_angle = angle;
+
     return ESP_OK;
 }
 
