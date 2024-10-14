@@ -20,6 +20,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
         .max_angle = SERVO_BASE_MAX_ANGLE,
     };
 
+    // TODO: проблемс с указателем
     servo_pca9685_init(&robot->base_servo, pca9685, &base_config);
     robot->base_servo.current_angle = SERVO_BASE_START_ANGLE;
 
@@ -139,14 +140,27 @@ esp_err_t arm_robot_home_state(arm_robot_t *robot)
 
 esp_err_t arm_robot_move_servo_to_angle(arm_robot_t *robot, uint8_t channel, float angle)
 {
-    if (channel < NUM_SERVO) {
-        servo_smooth_move_async_pid(&arm_motion[channel], angle);
-        return ESP_OK;
-    }
-    else {
+    switch (channel)
+    {
+    case SERVO_BASE_NUMBER_PWM:
+        channel = 0;
+        break;
+    case SERVO_SHOULDER_NUMBER_PWM:
+        channel = 1;
+        break;
+    case SERVO_ELBOW_NUMBER_PWM:
+        channel = 2;
+        break;
+    case SERVO_WRIST_NUMBER_PWM:
+        channel = 3;
+        break;
+    default:
         ESP_LOGE(TAG, "Unknown servo channel: %d", channel);
         return ESP_FAIL;
     }
+    // TODO: проверку продумать для используемых каналов PWM
+    servo_smooth_move_async_pid(&arm_motion[channel], angle);
+    return ESP_OK;
 }
 
 bool arm_robot_is_moving(arm_robot_t *robot)

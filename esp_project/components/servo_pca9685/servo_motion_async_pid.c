@@ -93,6 +93,8 @@ static void smooth_move_async_pid_callback(void *arg)
 
 void servo_smooth_move_async_pid(async_motion_pid_t *motion, float target_angle)
 {
+    ESP_LOGI(TAG, "Servo smooth move PWM: %d", motion->servo->channel);
+
     if (motion->is_moving) {
         servo_motion_pid_set_target_angle(motion, target_angle);
         return;

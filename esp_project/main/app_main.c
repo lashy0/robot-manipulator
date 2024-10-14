@@ -9,6 +9,7 @@
 
 #include "i2c.h"
 #include "acs712.h"
+#include "acs712_filtered.h"
 #include "pca9685.h"
 #include "arm_robot.h"
 
@@ -31,106 +32,56 @@ acs712_t acs712;
 
 float current;
 
-// Вариант функции движения с использованием ACS712
-static void move_manipulator_task(void *arg)
+#define STABLE_DURATION_MS         500
+#define CURRENT_CHANGE_THRESHOLD   60
+#define INTERVAL_MS                100
+
+static bool movement_in_progress = false;
+
+bool is_servo_motion_complete(acs712_t *acs712, float cur_current)
 {
-    arm_robot_t *robot = (arm_robot_t *)arg;
-    float current_angle;
-    float step = 2.0f;  // Шаг изменения угла
-    float current_task;
-    bool all_reached = false;
     esp_err_t ret;
-    float current_thresh = current;
+    float current = 0.0f;
+    float prev_current = cur_current;
+    int stable_duration = 0;
+    float delta = 0.0f;
 
-    // Целевые углы
-    float target_angles[4] = {
-        robot->manipulator.base_servo.target_angle,
-        robot->manipulator.shoulder_servo.target_angle,
-        robot->manipulator.elbow_servo.target_angle,
-        robot->manipulator.wrist_servo.target_angle
-    };
-
-    // Массив указателей на сервоприводы манипулятора
-    servo_t *servos[4] = {
-        &robot->manipulator.base_servo,
-        &robot->manipulator.shoulder_servo,
-        &robot->manipulator.elbow_servo,
-        &robot->manipulator.wrist_servo
-    };
-
-    while (!all_reached) {
-        all_reached = true;
-
-        for (int i = 0; i < 4; i++) {
-            ret = servo_pca9685_get_angle(servos[i], &current_angle, PWM_FREQUENCY);
-            if (ret != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to get current angle for servo %d", i);
-                continue;
-            }
-
-            // Вычисляем шаг изменения угла
-            float increment = (target_angles[i] > current_angle) ? step : -step;
-            current_angle += increment;
-
-            // Проверяем, достигли ли мы целевого угла для текущего серв
-            if ((increment > 0 && current_angle >= target_angles[i]) ||
-                (increment < 0 && current_angle <= target_angles[i])) {
-                current_angle = target_angles[i];
-            } else {
-                all_reached = false;
-            }
-
-            ESP_LOGI(TAG, "Manipulator [pwm%d] to current angles: %.2f; target anglse: %.2f", servos[i]->channel, current_angle, target_angles[i]);
-            // Устанавливаем текущий угол для текущего сервопривода
-            ret = servo_pca9685_set_angle(servos[i], current_angle, PWM_FREQUENCY);
-            if (ret != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to set angle for servo %d", i);
-            }
+    while (movement_in_progress) {
+        ret = acs712_read_filtered_current(acs712, &current);
+        if (ret != ESP_OK) {
+            ESP_LOGE("servo_motion", "Failed to read current");
+            return false;
         }
 
-        // Считываем силу тока с ACS712
-        if (acs712_read_current(&acs712, &current_task) == ESP_OK) {
-            ESP_LOGI(TAG, "Current: %.3f A", current_task);
+        delta = current - prev_current;
+        if (delta < 0) delta = -delta;
 
-            // Проверяем, меньше ли сила тока порога
-            if (current_task < current_thresh) {
-                ESP_LOGI(TAG, "Current threshold reached, stopping movement.");
-                all_reached = true;  // движение завершено
-            }
+        if (delta < CURRENT_CHANGE_THRESHOLD / 1000.0) {
+            stable_duration += INTERVAL_MS;
         } else {
-            ESP_LOGE(TAG, "Failed to read current from ACS712");
+            stable_duration = 0;
         }
 
-        vTaskDelay(pdMS_TO_TICKS(50));
+        if (stable_duration >= STABLE_DURATION_MS) {
+            ESP_LOGI("servo_motion", "Motion complete");
+            movement_in_progress = false;
+            return true;
+        }
+
+        prev_current = current;
+        vTaskDelay(pdMS_TO_TICKS(INTERVAL_MS));
     }
+    return false;
+}
 
-    // Отправляем сообщение о завершении движения
-    char done_message[] = "DONE\n";
-    usb_serial_jtag_write_bytes((const uint8_t *)done_message, sizeof(done_message) - 1, portMAX_DELAY);
-
-    ESP_LOGI(TAG, "Manipulator movement completed.");
+static void monitor_movement_task(void *arg)
+{
+    if (is_servo_motion_complete(&acs712, current)) {
+        ESP_LOGI(TAG, "Movement has completed - current is stable below threshold.");
+        usb_serial_jtag_write_bytes((uint8_t *)"DONE\n", 5, pdMS_TO_TICKS(50));
+    }
     vTaskDelete(NULL);
 }
-
-esp_err_t arm_robot_move_manipulator(arm_robot_t *robot, float base_angle, float shoulder_angle, float elbow_angle, float wrist_angle)
-{
-    if (!robot) {
-        ESP_LOGE(TAG, "Invalid robot pointer");
-        return ESP_FAIL;
-    }
-
-    // Устанавливаем целевые углы для всех сервоприводов
-    robot->manipulator.base_servo.target_angle = base_angle;
-    robot->manipulator.shoulder_servo.target_angle = shoulder_angle;
-    robot->manipulator.elbow_servo.target_angle = elbow_angle;
-    robot->manipulator.wrist_servo.target_angle = wrist_angle;
-
-    xTaskCreate(move_manipulator_task, "Move Manipulator Task", 4096, (void *)robot, 5, NULL);
-
-    ESP_LOGI(TAG, "Started moving manipulator to target angles without timer.");
-    return ESP_OK;
-}
-// End
 
 static void parse_command(const char *input)
 {
@@ -146,11 +97,11 @@ static void parse_command(const char *input)
         if (sscanf(command, "SET_ANGLE %hhu %f", &channel, &angle) == 2) {
             // Вызов функции для выставления угла серва
             esp_err_t ret = arm_robot_move_servo_to_angle(&robot, channel, angle);
-            // if (ret != ESP_OK) {
-            //     ESP_LOGE(TAG, "Failed to move servo to angle %.2f on channel %d", angle, channel);
-            // } else {
-            //     ESP_LOGI(TAG, "Started moving servo on channel %d to angle %.2f", channel, angle);
-            // }
+            if (ret != ESP_OK) {
+                ESP_LOGE(TAG, "Failed to move servo to angle %.2f on channel %d", angle, channel);
+            } else {
+                ESP_LOGI(TAG, "Started moving servo on channel %d to angle %.2f", channel, angle);
+            }
         }
         else {
             ESP_LOGW(TAG, "Invalid SET_ANGLE command format: %s", command);
@@ -162,15 +113,10 @@ static void parse_command(const char *input)
 
         if (sscanf(command, "SET_MANIPULATOR %f %f %f %f", &angles[0], &angles[1], &angles[2], &angles[3]) == 4) {
             // По таймеру
-            esp_err_t ret = arm_robot_move_manipulator_to_angles(&robot, angles[0], angles[1], angles[2], angles[3]);
-            // Вариант по току
-            // esp_err_t ret = arm_robot_move_manipulator(&robot, angles[0], angles[1], angles[2], angles[3]);
-            if (ret != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to move manipulator to angles");
-            } else {
-                ESP_LOGI(TAG, "Moving manipulator to angles: base=%.2f, shoulder=%.2f, elbow=%.2f, wrist=%.2f",
-                        angles[0], angles[1], angles[2], angles[3]);
-            }
+            arm_robot_move_manipulator_to_angles(&robot, angles[0], angles[1], angles[2], angles[3]);
+
+            movement_in_progress = true;
+            xTaskCreate(monitor_movement_task, "Monitor Movement Task", 2048, NULL, 5, NULL);
         }
         else {
             ESP_LOGW(TAG, "Invalid SET_MANIPULATOR command format: %s", command);
@@ -198,7 +144,7 @@ static void send_current_task(void *arg)
     char buffer[64];
 
     while (1) {
-        if (acs712_read_current(&acs712, &current) == ESP_OK) {
+        if (acs712_read_filtered_current(&acs712, &current) == ESP_OK) {
             // CURRENT <value>
             int len = snprintf(buffer, sizeof(buffer), "CURRENT %.3f\n", current);
 
@@ -209,7 +155,7 @@ static void send_current_task(void *arg)
             ESP_LOGE(TAG, "Failed to read current from ACS712");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(200));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -250,9 +196,9 @@ static void usb_serial_task(void *arg)
 void app_main()
 {
     // Set level log
-    esp_log_level_set("app_main", ESP_LOG_WARN);
-    esp_log_level_set("servo_pca9685", ESP_LOG_WARN);
-    esp_log_level_set("arm_robot", ESP_LOG_WARN);
+    // esp_log_level_set("app_main", ESP_LOG_WARN);
+    // esp_log_level_set("servo_pca9685", ESP_LOG_WARN);
+    // esp_log_level_set("arm_robot", ESP_LOG_WARN);
     esp_log_level_set("acs712", ESP_LOG_WARN);
 
     esp_err_t ret;
@@ -330,49 +276,12 @@ void app_main()
     // Initialize robot
     arm_robot_init(&robot, &pca9685);
 
-    // TODO: почему то при не инициализации сервов, нулевой вольтаж получается нормальным с погрешностью в 5-10 mV
-    ret = servo_pca9685_set_angle(&robot.manipulator.base_servo, SERVO_BASE_START_ANGLE, PWM_FREQUENCY);
-    if (ret != ESP_OK) {
-        return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    ret = servo_pca9685_set_angle(&robot.manipulator.shoulder_servo, SERVO_SHOULDER_START_ANGLE, PWM_FREQUENCY);
-    if (ret != ESP_OK) {
-        return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    ret = servo_pca9685_set_angle(&robot.manipulator.elbow_servo, SERVO_ELBOW_START_ANGLE, PWM_FREQUENCY);
-    if (ret != ESP_OK) {
-        return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    ret = servo_pca9685_set_angle(&robot.manipulator.wrist_servo, SERVO_WRIST_START_ANGLE, PWM_FREQUENCY);
-    if (ret != ESP_OK) {
-        return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    ret = servo_pca9685_set_angle(&robot.arm.wrist_rot_servo, SERVO_WRIST_ROT_START_ANGLE, PWM_FREQUENCY);
-    if (ret != ESP_OK) {
-        return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    ret = servo_pca9685_set_angle(&robot.arm.gripper.gripper_servo, SERVO_GRIPPER_START_ANGLE, PWM_FREQUENCY);
-    if (ret != ESP_OK) {
-        return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(20));
-
     // TODO: доработать данную функцию с учетом загрузки с памяти углы
-    // ret = arm_robot_home_state(&robot);
-    // if (ret != ESP_OK) {
-    //     ESP_LOGE(TAG, "Robot is not set home position");
-    //     return;
-    // }
+    ret = arm_robot_home_state(&robot);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Robot is not set home position");
+        return;
+    }
     ESP_LOGI(TAG, "Robot is in home position");
     // End
 
