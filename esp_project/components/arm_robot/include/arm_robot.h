@@ -2,6 +2,7 @@
 #define ARM_ROBOT_H
 
 #include "servo_pca9685.h"
+#include "servo_motion_async_pid.h"
 
 #define PWM_FREQUENCY  CONFIG_PWM_FREQUENCY
 
@@ -53,25 +54,13 @@ typedef enum {
 } gripper_state_t;
 
 typedef struct {
-    servo_t gripper_servo;
-    gripper_state_t state;
-} gripper_t;
-
-typedef struct {
-    servo_t wrist_rot_servo;
-    gripper_t gripper;
-} arm_t;
-
-typedef struct {
     servo_t base_servo;
     servo_t shoulder_servo;
     servo_t elbow_servo;
     servo_t wrist_servo;
-} manipulator_t;
-
-typedef struct {
-    manipulator_t manipulator;
-    arm_t arm;
+    servo_t wrist_rot_servo;
+    servo_t gripper_servo;
+    gripper_state_t gripper_state;
 } arm_robot_t;
 
 /**
@@ -90,6 +79,8 @@ esp_err_t arm_robot_home_state(arm_robot_t *robot);
 
 esp_err_t arm_robot_move_servo_to_angle(arm_robot_t *robot, uint8_t channel, float angle);
 
-esp_err_t arm_robot_move_manipulator_to_angles(arm_robot_t *robot, float base_angle, float shoulder_angle, float elbow_angle, float wrist_angle);
+bool arm_robot_is_moving(arm_robot_t *robot);
+
+void arm_robot_move_manipulator_to_angles(arm_robot_t *robot, float base_angle, float shoulder_angle, float elbow_angle, float wrist_angle);
 
 #endif
