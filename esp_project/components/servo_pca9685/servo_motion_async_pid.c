@@ -1,19 +1,14 @@
 #include <string.h>
 #include "esp_log.h"
 #include "esp_err.h"
-#include "servo_motion_async.h"
+#include "servo_motion_async_pid.h"
 
-static const char *TAG = "servo_motion_async";
+static const char *TAG = "servo_motion_async_pid";
 
-void servo_motion_async_init(async_motion_t *motion, servo_t *servo, float step_size, int step_delay)
+void servo_motion_async_pid_init(async_motion_pid_t *motion, servo_t *servo, int step_delay, float kp, float ki, float kd)
 {
     if (motion == NULL || servo == NULL) {
         ESP_LOGE(TAG, "Invalid argument: motion or servo is NULL");
-        return;
-    }
-
-    if (step_size <= 0) {
-        ESP_LOGE(TAG, "Invalid step size: must be greater than zero");
         return;
     }
 
@@ -25,12 +20,13 @@ void servo_motion_async_init(async_motion_t *motion, servo_t *servo, float step_
     motion->servo = servo;
     motion->target_angle = servo->current_angle;
     motion->step_delay = step_delay;
-    motion->step_size = step_size;
     motion->is_moving = false;
     motion->timer_handle = NULL;
+
+    pid_controller_init(&motion->pid, kp, ki, kd);
 }
 
-void servo_motion_set_target_angle(async_motion_t *motion, float target_angle)
+void servo_motion_pid_set_target_angle(async_motion_pid_t *motion, float target_angle)
 {
     servo_t *servo = motion->servo;
 
@@ -54,19 +50,23 @@ void servo_motion_set_target_angle(async_motion_t *motion, float target_angle)
     }
 }
 
-static void smooth_move_async_callback(void *arg)
+static void smooth_move_async_pid_callback(void *arg)
 {
-    async_motion_t *motion = (async_motion_t*) arg;
+    async_motion_pid_t *motion = (async_motion_pid_t*) arg;
     esp_err_t ret;
 
     servo_t *servo = motion->servo;
 
-    float direction = (motion->target_angle > servo->current_angle) ? 1.0f : -1.0f;
-    float angle = servo->current_angle + direction * motion->step_size;
+    float delay_time = (float)motion->step_delay / 1000.0f;
+    float pid_out = pid_calculate(&motion->pid, motion->target_angle, servo->current_angle, delay_time);
 
-    if ((direction > 0 && angle >= motion->target_angle) ||
-        (direction < 0 && angle <= motion->target_angle)) {
-        angle = motion->target_angle;
+    float angle = servo->current_angle + pid_out;
+
+    if (angle > servo->max_angle) {
+        angle = servo->max_angle;
+    }
+    else if (angle < servo->min_angle) {
+        angle = servo->min_angle;
     }
 
     ret = servo_pca9685_set_angle(servo, angle, servo->pca9685->pwm_freq);
@@ -79,7 +79,9 @@ static void smooth_move_async_callback(void *arg)
         return;
     }
 
-    if (servo->current_angle == motion->target_angle) {
+    float angle_diff = servo->current_angle - motion->target_angle;
+    float tol = 0.1f;
+    if ((angle_diff <= tol) && (angle_diff >= -tol)) {
         ESP_LOGI(TAG, "Target angle reache. Stop moving");
         esp_timer_stop(motion->timer_handle);
         esp_timer_delete(motion->timer_handle);
@@ -89,10 +91,10 @@ static void smooth_move_async_callback(void *arg)
     }
 }
 
-void servo_smooth_move_async(async_motion_t *motion, float target_angle)
+void servo_smooth_move_async_pid(async_motion_pid_t *motion, float target_angle)
 {
     if (motion->is_moving) {
-        servo_motion_set_target_angle(motion, target_angle);
+        servo_motion_pid_set_target_angle(motion, target_angle);
         return;
     }
 
@@ -102,10 +104,10 @@ void servo_smooth_move_async(async_motion_t *motion, float target_angle)
     motion->is_moving = true;
 
     char timer_name[32];
-    snprintf(timer_name, sizeof(timer_name), "servo_motion_timer_%d", motion->servo->channel);
+    snprintf(timer_name, sizeof(timer_name), "servo_motion_pid_timer_%d", motion->servo->channel);
 
     esp_timer_create_args_t timer_args = {
-        .callback = &smooth_move_async_callback,
+        .callback = &smooth_move_async_pid_callback,
         .arg = motion,
         .name = timer_name
     };
