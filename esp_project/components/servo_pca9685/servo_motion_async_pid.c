@@ -48,6 +48,9 @@ void servo_motion_pid_set_target_angle(async_motion_pid_t *motion, float target_
     if (motion->is_moving) {
         ESP_LOGI(TAG, "Target angle update to %.2f while moving", target_angle);
     }
+
+    motion->pid.integral = 0.0f;
+    motion->pid.prev_err = 0.0f;
 }
 
 static void smooth_move_async_pid_callback(void *arg)
@@ -61,6 +64,10 @@ static void smooth_move_async_pid_callback(void *arg)
     float pid_out = pid_calculate(&motion->pid, motion->target_angle, servo->current_angle, delay_time);
 
     float angle = servo->current_angle + pid_out;
+    
+    // if ((angle >= motion->target_angle) || (angle <= motion->target_angle)) {
+    //     angle = motion->target_angle;
+    // }
 
     if (angle > servo->max_angle) {
         angle = servo->max_angle;
@@ -69,7 +76,10 @@ static void smooth_move_async_pid_callback(void *arg)
         angle = servo->min_angle;
     }
 
-    ret = servo_pca9685_set_angle(servo, angle, servo->pca9685->pwm_freq);
+    ESP_LOGI(TAG, "Servo smooth move PWM: %d", motion->servo->channel);
+    ESP_LOGI(TAG, "pid_out: %.2f, delay_time: %.2f, angle: %.2f", pid_out, delay_time, angle);
+
+    ret = servo_pca9685_set_angle(servo, angle, servo->pca9685.pwm_freq);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to set servo angle");
         esp_timer_stop(motion->timer_handle);
@@ -79,7 +89,9 @@ static void smooth_move_async_pid_callback(void *arg)
         return;
     }
 
+    // TODO: на основе моделировнаия проверить значение tol
     float angle_diff = servo->current_angle - motion->target_angle;
+    ESP_LOGI(TAG, "Angle diff: %.2f, Current Angle: %.2f, Target Angle: %.2f", angle_diff, servo->current_angle, motion->target_angle);
     float tol = 0.1f;
     if ((angle_diff <= tol) && (angle_diff >= -tol)) {
         ESP_LOGI(TAG, "Target angle reache. Stop moving");
@@ -93,16 +105,14 @@ static void smooth_move_async_pid_callback(void *arg)
 
 void servo_smooth_move_async_pid(async_motion_pid_t *motion, float target_angle)
 {
-    ESP_LOGI(TAG, "Servo smooth move PWM: %d", motion->servo->channel);
+    servo_motion_pid_set_target_angle(motion, target_angle);
 
     if (motion->is_moving) {
-        servo_motion_pid_set_target_angle(motion, target_angle);
         return;
     }
 
     esp_err_t ret;
 
-    motion->target_angle = target_angle;
     motion->is_moving = true;
 
     char timer_name[32];

@@ -27,7 +27,7 @@ void servo_pca9685_init(servo_t *servo, pca9685_t *pca9685, const servo_config_t
         return;
     }
 
-    servo->pca9685 = pca9685;
+    servo->pca9685 = *pca9685;
     servo->channel = config->channel;
     servo->min_pulse_width = config->min_pulse_width;
     servo->max_pulse_width = config->max_pulse_width;
@@ -52,7 +52,7 @@ esp_err_t servo_pca9685_set_angle(servo_t *servo, float angle, float pwm_freq)
 
     ESP_LOGI(TAG, "Setting servo angle to %.2f degrees (pulse width: %.2f us, on_time: %d, off_time: %d)", angle, pulse_width, on_time, off_time);
 
-    ret = pca9685_set_pwm(servo->pca9685, servo->channel, on_time, off_time);
+    ret = pca9685_set_pwm(&servo->pca9685, servo->channel, on_time, off_time);
     if (ret != ESP_OK) {
         return ESP_FAIL;
     }
@@ -68,7 +68,7 @@ esp_err_t servo_pca9685_get_angle(servo_t *servo,  float *angle, float pwm_freq)
     uint16_t on_time;
     uint16_t off_time;
 
-    ret = pca9685_get_pwm(servo->pca9685, servo->channel, &on_time, &off_time);
+    ret = pca9685_get_pwm(&servo->pca9685, servo->channel, &on_time, &off_time);
     if (ret != ESP_OK) {
         return ESP_FAIL;
     }

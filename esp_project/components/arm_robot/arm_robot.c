@@ -20,11 +20,11 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
         .max_angle = SERVO_BASE_MAX_ANGLE,
     };
 
-    // TODO: проблемс с указателем
+    // TODO: проблемс с указателем pca9685 в сервоприводе...
     servo_pca9685_init(&robot->base_servo, pca9685, &base_config);
     robot->base_servo.current_angle = SERVO_BASE_START_ANGLE;
 
-    servo_motion_async_pid_init(&arm_motion[0], &robot->base_servo, 100, 1.5, 0.1, 0.3);
+    servo_motion_async_pid_init(&arm_motion[0], &robot->base_servo, 20, 0.25, 0.001, 0.001);
     // End
     
     // Init shoulder servo
@@ -38,7 +38,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     servo_pca9685_init(&robot->shoulder_servo, pca9685, &shoulder_config);
     robot->shoulder_servo.current_angle = SERVO_SHOULDER_START_ANGLE;
     
-    servo_motion_async_pid_init(&arm_motion[1], &robot->shoulder_servo, 100, 1.5, 0.1, 0.3);
+    servo_motion_async_pid_init(&arm_motion[1], &robot->shoulder_servo, 20, 0.25, 0.001, 0.001);
     // End
 
     // Init elbow servo
@@ -52,7 +52,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     servo_pca9685_init(&robot->elbow_servo, pca9685, &elbow_config);
     robot->elbow_servo.current_angle = SERVO_ELBOW_START_ANGLE;
 
-    servo_motion_async_pid_init(&arm_motion[2], &robot->elbow_servo, 50, 0.5, 0.1, 0.2);
+    servo_motion_async_pid_init(&arm_motion[2], &robot->elbow_servo, 20, 0.25, 0.001, 0.001);
     // End
 
     // Init wrist servo
@@ -66,7 +66,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     servo_pca9685_init(&robot->wrist_servo, pca9685, &wrist_config);
     robot->wrist_servo.current_angle = SERVO_WRIST_START_ANGLE;
     
-    servo_motion_async_pid_init(&arm_motion[3], &robot->wrist_servo, 50, 0.5, 0.1, 0.2);
+    servo_motion_async_pid_init(&arm_motion[3], &robot->wrist_servo, 20, 0.25, 0.001, 0.001);
     // End
 
     // Init wrist rotational servo
@@ -80,7 +80,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     servo_pca9685_init(&robot->wrist_rot_servo, pca9685, &wrist_rot_config);
     robot->wrist_rot_servo.current_angle = SERVO_WRIST_ROT_START_ANGLE;
     
-    servo_motion_async_pid_init(&arm_motion[4], &robot->wrist_rot_servo, 50, 0.5, 0.1, 0.2);
+    servo_motion_async_pid_init(&arm_motion[4], &robot->wrist_rot_servo, 100, 0.5, 0.01, 0.05);
     // End
 
     // Init gripper servo
@@ -95,7 +95,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     robot->gripper_servo.current_angle = SERVO_GRIPPER_START_ANGLE;
     robot->gripper_state = GRIPPER_CLOSE;
     
-    servo_motion_async_pid_init(&arm_motion[5], &robot->gripper_servo, 50, 0.5, 0.1, 0.2);
+    servo_motion_async_pid_init(&arm_motion[5], &robot->gripper_servo, 100, 0.5, 0.01, 0.05);
     // End
 }
 

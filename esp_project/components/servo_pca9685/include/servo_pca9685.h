@@ -18,7 +18,7 @@ typedef struct {
  * @brief Structure representing the state of a servo motor
  */
 typedef struct {
-    pca9685_t *pca9685;        /**< Pointer to the PCA9685 controller used to control the servo */
+    pca9685_t pca9685;        /**< Pointer to the PCA9685 controller used to control the servo */
     uint16_t min_pulse_width; /**< The minimum pulse width in microseconds */
     uint16_t max_pulse_width; /**< The maximum pulse width in microseconds */
     float min_angle;          /**< The minimum angle in degress */

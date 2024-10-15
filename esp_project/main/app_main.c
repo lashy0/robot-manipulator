@@ -97,11 +97,11 @@ static void parse_command(const char *input)
         if (sscanf(command, "SET_ANGLE %hhu %f", &channel, &angle) == 2) {
             // Вызов функции для выставления угла серва
             esp_err_t ret = arm_robot_move_servo_to_angle(&robot, channel, angle);
-            if (ret != ESP_OK) {
-                ESP_LOGE(TAG, "Failed to move servo to angle %.2f on channel %d", angle, channel);
-            } else {
-                ESP_LOGI(TAG, "Started moving servo on channel %d to angle %.2f", channel, angle);
-            }
+            // if (ret != ESP_OK) {
+            //     ESP_LOGE(TAG, "Failed to move servo to angle %.2f on channel %d", angle, channel);
+            // } else {
+            //     ESP_LOGI(TAG, "Started moving servo on channel %d to angle %.2f", channel, angle);
+            // }
         }
         else {
             ESP_LOGW(TAG, "Invalid SET_ANGLE command format: %s", command);
@@ -200,6 +200,7 @@ void app_main()
     // esp_log_level_set("servo_pca9685", ESP_LOG_WARN);
     // esp_log_level_set("arm_robot", ESP_LOG_WARN);
     esp_log_level_set("acs712", ESP_LOG_WARN);
+    // esp_log_level_set("servo_motion_async_pid", ESP_LOG_WARN);
 
     esp_err_t ret;
 

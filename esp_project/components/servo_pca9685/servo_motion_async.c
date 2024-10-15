@@ -69,7 +69,7 @@ static void smooth_move_async_callback(void *arg)
         angle = motion->target_angle;
     }
 
-    ret = servo_pca9685_set_angle(servo, angle, servo->pca9685->pwm_freq);
+    ret = servo_pca9685_set_angle(servo, angle, servo->pca9685.pwm_freq);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to set servo angle");
         esp_timer_stop(motion->timer_handle);

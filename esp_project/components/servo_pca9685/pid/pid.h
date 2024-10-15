@@ -1,6 +1,8 @@
 #ifndef PID_H
 #define PID_H
 
+#define MAX_ANGLE_STEP 4.0f
+
 /**
  * @brief Structure representing a PID controller
  */
