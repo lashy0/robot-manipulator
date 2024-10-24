@@ -33,6 +33,7 @@ typedef struct {
  * 
  * @return ESP_OK on success
  * @return ESP_ERR_INVALID_STATE if I2C bus initialized
+ * @return ESP_ERR_INVALID_ARG if config is NULL
  * @return ESP_FAIL if failed initialized
  */
 esp_err_t i2c_master_init(i2c_bus_t *bus, const i2c_config_bus_t *config);

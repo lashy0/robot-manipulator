@@ -26,12 +26,5 @@ float pid_calculate(pid_controller_t *pid, float target_pos, float current_pos, 
 
     float out = pid->kp * err + pid->ki * pid->integral + pid->kd * derication;
 
-    if (out > MAX_ANGLE_STEP) {
-        out = MAX_ANGLE_STEP;
-    }
-    else if (out < -MAX_ANGLE_STEP) {
-        out = -MAX_ANGLE_STEP;
-    }
-
     return out;
 }

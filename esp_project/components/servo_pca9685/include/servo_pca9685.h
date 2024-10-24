@@ -7,7 +7,7 @@
  * @brief Configuration structure for the servo motor
  */
 typedef struct {
-    uint8_t channel;          /**< The PCA9685 channel used to control th servo */
+    uint8_t channel;          /**< The PCA9685 channel used to control to servo */
     uint16_t min_pulse_width; /**< The minimum pulse width in microseconds */
     uint16_t max_pulse_width; /**< The maximum pulse width in microseconds */
     float min_angle;          /**< The minimum angle in degress */
