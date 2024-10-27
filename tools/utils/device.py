@@ -10,26 +10,33 @@ _logger = Logger().get_logger("SerialDevice", level="ERROR")
 class SerialDevice:
     """Class to manage a serial connection to a device.
 
-    Attributes:
-        port (str): 
-            The COM port for the serial connection.
-        baudrate (int):
-            The baud rate for the serial connection.
-        timeout (float):
-            The read timeout for the serial connection.
-        _serial (serial.Serial):
-            The pySerial instance representing the connection.
+    Attributes
+    ----------
+    port : str 
+        The COM port for the serial connection.
+    
+    baudrate : int
+        The baud rate for the serial connection.
+    
+    timeout : float
+        The read timeout for the serial connection.
+    
+    _serial : serial.Serial)
+        The pySerial instance representing the connection.
     """
     def __init__(self, port: str = None, baudrate: int = 9600, timeout: float = 1.0):
         """Initialize the SerialDevice.
 
-        Args:
-            port:
-                The COM port to connect.
-            baudrate:
-                The baud rate the connection.
-            timeout:
-                The timeout for reading from the serial connection.
+        Args
+        ----
+        port:
+            The COM port to connect.
+        
+        baudrate:
+            The baud rate the connection.
+        
+        timeout:
+            The timeout for reading from the serial connection.
         """
         self._serial = None
         self.port = port
@@ -39,21 +46,25 @@ class SerialDevice:
     def is_connected(self) -> bool:
         """Check if the serial connection is open
 
-        Returns:
-            bool: True if the connection is open, False otherwise.
+        Returns
+        -------
+        result : bool
+            True if the connection is open, False otherwise.
         """
         return self._serial and self._serial.is_open
     
     def connect(self, port: str = None) -> None:
         """Connects to the serial device.
 
-        Args:
-            port (str, optional):
-                The COM port to connect to.
+        Args
+        ----
+        port : str, optional
+            The COM port to connect to.
         
-        Raises:
-            serial.SerialException:
-                If the connection to the serial port fails.
+        Raises
+        ------
+        serial.SerialException:
+            If the connection to the serial port fails.
         """
         if port:
             self.port = port
@@ -79,11 +90,13 @@ class SerialDevice:
     def reconnect(self, retrise: int = 3, delay: float = 1.0) -> None:
         """Attempts to reconnect to the serial device.
 
-        Args:
-            retrise (int):
-                Number of reconnection attempts.
-            delay (float):
-                Delay between reconnection attempts is seconds.
+        Args
+        ----
+        retrise : int
+            Number of reconnection attempts.
+        
+        delay : float
+            Delay between reconnection attempts is seconds.
         """
         for attempt in range(retrise):
             self.disconnect()
@@ -97,15 +110,18 @@ class SerialDevice:
     def write_data(self, data: str, timeout: float = None) -> None:
         """Writes data to the serial device.
         
-        Args:
-            data (str):
-                The data to be written to the serial device.
-            timeout (flaot, optional):
-                Timeout for writing data.
+        Args
+        ----
+        data : str
+            The data to be written to the serial device.
         
-        Raises:
-            serial.SerialException:
-                If writing to the serial port fails.
+        timeout : flaot, optional
+            Timeout for writing data.
+        
+        Raises
+        ------
+        serial.SerialException:
+            If writing to the serial port fails.
         """
         if self.is_connected():
             try:
@@ -122,16 +138,20 @@ class SerialDevice:
     def read_data(self, timeout: float = None) -> str:
         """Reads data from the serial device.
 
-        Args:
-            timeout (float, optional):
-                Timeout for reading data.
+        Args
+        ----
+        timeout : float, optional
+            Timeout for reading data.
         
-        Returns:
-            str: The data read from the serial devic, or an empty string if the read fails.
+        Returns
+        -------
+        data: str
+            The data read from the serial devic, or an empty string if the read fails.
         
-        Raises:
-            serial.SerialException:
-                If reading from the serial port fails.
+        Raises
+        ------
+        serial.SerialException:
+            If reading from the serial port fails.
         """
         if self.is_connected():
             try:
@@ -150,9 +170,10 @@ class SerialDevice:
     def flush_input(self) -> None:
         """Flushes the input buffer of the serial connection.
 
-        Raises:
-            serial.SerialException:
-                If flushing the input buffer fails.
+        Raises
+        ------
+        serial.SerialException:
+            If flushing the input buffer fails.
         """
         if self.is_connected():
             try:
@@ -165,9 +186,10 @@ class SerialDevice:
     def flush_output(self) -> None:
         """Flushes the output buffer of the serial connection.
 
-        Raises:
-            serial.SerialException:
-                If flushing the output buffer fails.
+        Raises
+        ------
+        serial.SerialException:
+            If flushing the output buffer fails.
         """
         if self.is_connected():
             try:
