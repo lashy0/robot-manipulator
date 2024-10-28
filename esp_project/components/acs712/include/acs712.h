@@ -51,6 +51,7 @@ esp_err_t acs712_deinit(acs712_t *acs712);
  * @param[in] samples Number of samples to average for calibration.
  * 
  * @return ESP_OK on success
+ * @return ESP_ERR_IBVALID_ARG if the acs712 is NULL
  * @return ESP_FAIL if the reading or conversion fails
  */
 esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples);
@@ -61,7 +62,7 @@ esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples);
  * @param[in] acs712 Pointer to the ACS712 sensor structure
  * 
  * @return ESP_OK on success
- * @return ESP_ERR_INVALID_ARG if the pointer is NULL
+ * @return ESP_ERR_INVALID_ARG if the acs712 is NULL
  * @return ESP_FAIL if the recalibration fails
  */
 esp_err_t acs712_recalibrate(acs712_t *acs712);
@@ -73,6 +74,7 @@ esp_err_t acs712_recalibrate(acs712_t *acs712);
  * @param[out] data Pointer to store the raw ADC value
  * 
  * @return ESP_OK on success
+ * @return ESP_ERR_IBVALID_ARG if the acs712 is NULL
  * @return ESP_FAIL if the reading fail
  */
 esp_err_t acs712_read_raw(acs712_t *acs712, int *data);
@@ -84,6 +86,7 @@ esp_err_t acs712_read_raw(acs712_t *acs712, int *data);
  * @param[out] data Pointer to store the voltage value in millivolts (mV)
  * 
  * @return ESP_OK on success
+ * @return ESP_ERR_IBVALID_ARG if the acs712 is NULL
  * @return ESP_FAIL if the reading or conversion fails
  */
 esp_err_t acs712_read_voltage(acs712_t *acs712, int *data);
@@ -95,6 +98,7 @@ esp_err_t acs712_read_voltage(acs712_t *acs712, int *data);
  * @param[out] data Pointer to store the calculated current in amperes (A)
  * 
  * @return ESP_OK on success
+ * @return ESP_ERR_IBVALID_ARG if sensitivity is zero or if the acs712 is NULL
  * @return ESP_FAIL if the calculation fails or sensitivity is zero
  */
 esp_err_t acs712_read_current(acs712_t *acs712, float *data);
