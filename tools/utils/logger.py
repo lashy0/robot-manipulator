@@ -85,7 +85,7 @@ class Logger:
 
         return logger
     
-    @classmethod
+    @staticmethod
     def configure_from_file(config_path: str) -> None:
         """Configures the logging system from a given JSON configuration file.
 
