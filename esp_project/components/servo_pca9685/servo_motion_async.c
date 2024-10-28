@@ -69,6 +69,8 @@ static void smooth_move_async_callback(void *arg)
         angle = motion->target_angle;
     }
 
+    ESP_LOGI(TAG, "Servo smooth move PWM: %d", motion->servo->channel);
+
     ret = servo_pca9685_set_angle(servo, angle, servo->pca9685.pwm_freq);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to set servo angle");
@@ -91,14 +93,14 @@ static void smooth_move_async_callback(void *arg)
 
 void servo_smooth_move_async(async_motion_t *motion, float target_angle)
 {
+    servo_motion_set_target_angle(motion, target_angle);
+
     if (motion->is_moving) {
-        servo_motion_set_target_angle(motion, target_angle);
         return;
     }
 
     esp_err_t ret;
 
-    motion->target_angle = target_angle;
     motion->is_moving = true;
 
     char timer_name[32];
@@ -123,5 +125,16 @@ void servo_smooth_move_async(async_motion_t *motion, float target_angle)
         esp_timer_delete(motion->timer_handle);
         motion->timer_handle = NULL;
         motion->is_moving = false;
+    }
+}
+
+void servo_smooth_move_stop(async_motion_t *motion)
+{
+    if (motion->is_moving) {
+        esp_timer_stop(motion->timer_handle);
+        esp_timer_delete(motion->timer_handle);
+        motion->timer_handle = NULL;
+        motion->is_moving = false;
+        ESP_LOGI(TAG, "Motion stopped for servo on channel %d", motion->servo->channel);
     }
 }

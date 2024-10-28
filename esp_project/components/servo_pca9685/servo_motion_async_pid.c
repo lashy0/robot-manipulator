@@ -5,7 +5,7 @@
 
 static const char *TAG = "servo_motion_async_pid";
 
-void servo_motion_async_pid_init(async_motion_pid_t *motion, servo_t *servo, int step_delay, float kp, float ki, float kd)
+void servo_motion_async_pid_init(async_motion_pid_t *motion, servo_t *servo, int step_delay, float kp, float ki, float kd, float max_speed)
 {
     if (motion == NULL || servo == NULL) {
         ESP_LOGE(TAG, "Invalid argument: motion or servo is NULL");
@@ -21,9 +21,11 @@ void servo_motion_async_pid_init(async_motion_pid_t *motion, servo_t *servo, int
     motion->target_angle = servo->current_angle;
     motion->step_delay = step_delay;
     motion->is_moving = false;
+    motion->max_speed = max_speed;
     motion->timer_handle = NULL;
+    motion->ramp_up_coeff = 0.1f;
 
-    pid_controller_init(&motion->pid, kp, ki, kd);
+    pid_controller_init(&(motion->pid), kp, ki, kd);
 }
 
 void servo_motion_pid_set_target_angle(async_motion_pid_t *motion, float target_angle)
@@ -51,6 +53,7 @@ void servo_motion_pid_set_target_angle(async_motion_pid_t *motion, float target_
 
     motion->pid.integral = 0.0f;
     motion->pid.prev_err = 0.0f;
+    motion->ramp_up_coeff = 0.1f;
 }
 
 static void smooth_move_async_pid_callback(void *arg)
@@ -61,19 +64,27 @@ static void smooth_move_async_pid_callback(void *arg)
     servo_t *servo = motion->servo;
 
     float delay_time = (float)motion->step_delay / 1000.0f;
-    float pid_out = pid_calculate(&motion->pid, motion->target_angle, servo->current_angle, delay_time);
+    float pid_out = pid_calculate(&(motion->pid), motion->target_angle, servo->current_angle, delay_time);
+
+    // Плавный старт движения ramp-up
+    if (motion->ramp_up_coeff < 1.0f) {
+        motion->ramp_up_coeff += 0.05f;
+    }
+
+    pid_out *= motion->ramp_up_coeff;
+
+    if (pid_out > motion->max_speed) {
+        pid_out = motion->max_speed;
+    }
+    else if (pid_out < -motion->max_speed) {
+        pid_out = -motion->max_speed;
+    }
 
     float angle = servo->current_angle + pid_out;
     
-    // if ((angle >= motion->target_angle) || (angle <= motion->target_angle)) {
-    //     angle = motion->target_angle;
-    // }
-
-    if (angle > servo->max_angle) {
-        angle = servo->max_angle;
-    }
-    else if (angle < servo->min_angle) {
-        angle = servo->min_angle;
+    // TODO: нужна ли проверка значения из ПИД?
+    if ((angle >= motion->target_angle && pid_out > 0) || (angle <= motion->target_angle && pid_out < 0)) {
+        angle = motion->target_angle;
     }
 
     ESP_LOGI(TAG, "Servo smooth move PWM: %d", motion->servo->channel);
@@ -137,5 +148,16 @@ void servo_smooth_move_async_pid(async_motion_pid_t *motion, float target_angle)
         esp_timer_delete(motion->timer_handle);
         motion->timer_handle = NULL;
         motion->is_moving = false;
+    }
+}
+
+void servo_smooth_move_pid_stop(async_motion_pid_t *motion)
+{
+    if (motion->is_moving) {
+        esp_timer_stop(motion->timer_handle);
+        esp_timer_delete(motion->timer_handle);
+        motion->timer_handle = NULL;
+        motion->is_moving = false;
+        ESP_LOGI(TAG, "Motion stopped for servo on channel %d", motion->servo->channel);
     }
 }

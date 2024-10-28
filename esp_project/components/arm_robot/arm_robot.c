@@ -1,13 +1,10 @@
+#include <math.h>
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_timer.h"
 #include "arm_robot.h"
 
 static const char *TAG = "arm_robot";
-
-#define NUM_SERVO 6
-
-static async_motion_pid_t arm_motion[NUM_SERVO];
 
 void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
 {
@@ -20,11 +17,10 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
         .max_angle = SERVO_BASE_MAX_ANGLE,
     };
 
-    // TODO: проблемс с указателем pca9685 в сервоприводе...
     servo_pca9685_init(&robot->base_servo, pca9685, &base_config);
     robot->base_servo.current_angle = SERVO_BASE_START_ANGLE;
 
-    servo_motion_async_pid_init(&arm_motion[0], &robot->base_servo, 20, 0.25, 0.001, 0.001);
+    servo_motion_async_pid_init(&robot->arm_motion[0], &robot->base_servo, 20, 0.25, 0.001, 0.001, 4.0);
     // End
     
     // Init shoulder servo
@@ -38,7 +34,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     servo_pca9685_init(&robot->shoulder_servo, pca9685, &shoulder_config);
     robot->shoulder_servo.current_angle = SERVO_SHOULDER_START_ANGLE;
     
-    servo_motion_async_pid_init(&arm_motion[1], &robot->shoulder_servo, 20, 0.25, 0.001, 0.001);
+    servo_motion_async_pid_init(&robot->arm_motion[1], &robot->shoulder_servo, 20, 0.25, 0.001, 0.001, 4.0);
     // End
 
     // Init elbow servo
@@ -52,7 +48,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     servo_pca9685_init(&robot->elbow_servo, pca9685, &elbow_config);
     robot->elbow_servo.current_angle = SERVO_ELBOW_START_ANGLE;
 
-    servo_motion_async_pid_init(&arm_motion[2], &robot->elbow_servo, 20, 0.25, 0.001, 0.001);
+    servo_motion_async_pid_init(&robot->arm_motion[2], &robot->elbow_servo, 20, 0.25, 0.001, 0.001, 4.0);
     // End
 
     // Init wrist servo
@@ -66,7 +62,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     servo_pca9685_init(&robot->wrist_servo, pca9685, &wrist_config);
     robot->wrist_servo.current_angle = SERVO_WRIST_START_ANGLE;
     
-    servo_motion_async_pid_init(&arm_motion[3], &robot->wrist_servo, 20, 0.25, 0.001, 0.001);
+    servo_motion_async_pid_init(&robot->arm_motion[3], &robot->wrist_servo, 20, 0.25, 0.001, 0.001, 4.0);
     // End
 
     // Init wrist rotational servo
@@ -80,7 +76,7 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     servo_pca9685_init(&robot->wrist_rot_servo, pca9685, &wrist_rot_config);
     robot->wrist_rot_servo.current_angle = SERVO_WRIST_ROT_START_ANGLE;
     
-    servo_motion_async_pid_init(&arm_motion[4], &robot->wrist_rot_servo, 100, 0.5, 0.01, 0.05);
+    servo_motion_async_pid_init(&robot->arm_motion[4], &robot->wrist_rot_servo, 100, 0.5, 0.01, 0.05, 4.0);
     // End
 
     // Init gripper servo
@@ -95,11 +91,10 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685)
     robot->gripper_servo.current_angle = SERVO_GRIPPER_START_ANGLE;
     robot->gripper_state = GRIPPER_CLOSE;
     
-    servo_motion_async_pid_init(&arm_motion[5], &robot->gripper_servo, 100, 0.5, 0.01, 0.05);
+    servo_motion_async_pid_init(&robot->arm_motion[5], &robot->gripper_servo, 100, 0.5, 0.01, 0.05, 4.0);
     // End
 }
 
-// TODO: ммм на один раз грубо говоря
 esp_err_t arm_robot_home_state(arm_robot_t *robot)
 {
     esp_err_t ret;
@@ -159,14 +154,14 @@ esp_err_t arm_robot_move_servo_to_angle(arm_robot_t *robot, uint8_t channel, flo
         return ESP_FAIL;
     }
     // TODO: проверку продумать для используемых каналов PWM
-    servo_smooth_move_async_pid(&arm_motion[channel], angle);
+    servo_smooth_move_async_pid(&(robot->arm_motion[channel]), angle);
     return ESP_OK;
 }
 
 bool arm_robot_is_moving(arm_robot_t *robot)
 {
     for (int i = 0; i < NUM_SERVO; i++) {
-        if (arm_motion[i].is_moving) {
+        if (robot->arm_motion[i].is_moving) {
             return true;
         }
     }
@@ -176,19 +171,15 @@ bool arm_robot_is_moving(arm_robot_t *robot)
 
 void arm_robot_move_manipulator_to_angles(arm_robot_t *robot, float base_angle, float shoulder_angle, float elbow_angle, float wrist_angle)
 {
-    float max_delta = base_angle;
-    if (shoulder_angle > max_delta) max_delta = shoulder_angle;
-    if (elbow_angle > max_delta) max_delta = elbow_angle;
-    if (wrist_angle > max_delta) max_delta = wrist_angle;
+    // Остановка движения сервоприводов, если они уже движутся
+    servo_smooth_move_pid_stop(&robot->arm_motion[0]);
+    servo_smooth_move_pid_stop(&robot->arm_motion[1]);
+    servo_smooth_move_pid_stop(&robot->arm_motion[2]);
+    servo_smooth_move_pid_stop(&robot->arm_motion[3]);
 
-    float step_delay = max_delta > 0 ? 500 / max_delta : 50;
-
-    for (int i = 0; i < 4; i++) {
-        arm_motion[i].step_delay = step_delay;
-    }
-
-    servo_smooth_move_async_pid(&arm_motion[0], base_angle);
-    servo_smooth_move_async_pid(&arm_motion[1], shoulder_angle);
-    servo_smooth_move_async_pid(&arm_motion[2], elbow_angle);
-    servo_smooth_move_async_pid(&arm_motion[3], wrist_angle);
+    // Запуск асинхронного движения каждого сервопривода
+    servo_smooth_move_async_pid(&(robot->arm_motion[0]), base_angle);
+    servo_smooth_move_async_pid(&(robot->arm_motion[1]), shoulder_angle);
+    servo_smooth_move_async_pid(&(robot->arm_motion[2]), elbow_angle);
+    servo_smooth_move_async_pid(&(robot->arm_motion[3]), wrist_angle);
 }
