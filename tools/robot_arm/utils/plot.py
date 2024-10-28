@@ -3,7 +3,6 @@ from ikpy.chain import Chain
 from ikpy.utils.plot import init_3d_figure
 from typing import Optional
 import matplotlib.pyplot as plt
-from matplotlib.lines import l
 
 
 class RobotArmPlot:
