@@ -10,6 +10,11 @@ esp_err_t i2c_master_init(i2c_bus_t *bus, const i2c_config_bus_t *config)
         ESP_LOGW(TAG, "I2C bus is already initialized");
         return ESP_ERR_INVALID_STATE;
     }
+
+    if (config == NULL) {
+        ESP_LOGE(TAG, "Config paramerter is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
     
     esp_err_t ret;
 

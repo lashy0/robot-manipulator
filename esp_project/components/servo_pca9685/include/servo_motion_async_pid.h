@@ -13,10 +13,13 @@ typedef struct {
     float target_angle;              /**< The target angle in degress */
     int step_delay;                  /**< The delay between steps in milliseconds */
     bool is_moving;                  /**< Indicates if the servo is currently moving */
+    float max_speed;                  /**< Max speed degrees delay */
     esp_timer_handle_t timer_handle; /**< Timer handle for managing servo movement asynchronously */
     pid_controller_t pid;            /**< PID controller */
+    float ramp_up_coeff;
 } async_motion_pid_t;
 
+// TODO: обновить описание
 /**
  * @brief Initialize the asynchronous PID-controlled motion structure for the servo
  * 
@@ -27,7 +30,7 @@ typedef struct {
  * @param[in] ki Integral coefficient for PID controller
  * @param[in] kd Derivative coefficient for PID controller
  */
-void servo_motion_async_pid_init(async_motion_pid_t *motion, servo_t *servo, int step_delay, float kp, float ki, float kd);
+void servo_motion_async_pid_init(async_motion_pid_t *motion, servo_t *servo, int step_delay, float kp, float ki, float kd, float max_speed);
 
 /**
  * @brief Sets a new target angle
@@ -44,5 +47,8 @@ void servo_motion_pid_set_target_angle(async_motion_pid_t *motion, float target_
  * @param[in] target_angle The desired target angle in degrees
  */
 void servo_smooth_move_async_pid(async_motion_pid_t *motion, float target_angle);
+
+// TODO: написать описание
+void servo_smooth_move_pid_stop(async_motion_pid_t *motion);
 
 #endif

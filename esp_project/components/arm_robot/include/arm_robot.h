@@ -48,6 +48,8 @@
 #define SERVO_GRIPPER_MIN_PULSE_US CONFIG_SERVO_GRIPPER_MIN_PULSE_US
 #define SERVO_GRIPPER_MAX_PULSE_US CONFIG_SERVO_GRIPPER_MAX_PULSE_US
 
+#define NUM_SERVO 6
+
 typedef enum {
     GRIPPER_OPEN,
     GRIPPER_CLOSE
@@ -61,6 +63,7 @@ typedef struct {
     servo_t wrist_rot_servo;
     servo_t gripper_servo;
     gripper_state_t gripper_state;
+    async_motion_pid_t arm_motion[NUM_SERVO];
 } arm_robot_t;
 
 /**
@@ -77,10 +80,13 @@ void arm_robot_init(arm_robot_t *robot, pca9685_t *pca9685);
  */
 esp_err_t arm_robot_home_state(arm_robot_t *robot);
 
+// TODO: написать описание
 esp_err_t arm_robot_move_servo_to_angle(arm_robot_t *robot, uint8_t channel, float angle);
 
+// TODO: написать описание
 bool arm_robot_is_moving(arm_robot_t *robot);
 
+// TODO: написать описание
 void arm_robot_move_manipulator_to_angles(arm_robot_t *robot, float base_angle, float shoulder_angle, float elbow_angle, float wrist_angle);
 
 #endif

@@ -5,13 +5,36 @@
 
 static const char *TAG = "acs712_filtered";
 
-#define SAMPLES_COUNT 10
+#define SAMPLES_COUNT 5
+#define ALPHA 0.3
+
+#define USE_EMA_FILTER
 
 esp_err_t acs712_read_filtered_raw(acs712_t *acs712, int *data)
 {
     esp_err_t ret;
-    int sum = 0;
     int raw = 0;
+
+#ifdef USE_EMA_FILTER
+
+    static float ema_value = 0;
+
+    ret = acs712_read_raw(acs712, &raw);
+    if (ret != ESP_OK) {
+        return ESP_FAIL;
+    }
+
+    if (ema_value == 0) {
+        ema_value = raw;
+    } else {
+        ema_value = (ALPHA * raw) + ((1 - ALPHA) * ema_value);
+    }
+
+    *data = (int)ema_value;
+
+#else
+
+    int sum = 0;
 
     for (int i = 0; i < SAMPLES_COUNT; i++) {
         ret = acs712_read_raw(acs712, &raw);
@@ -19,10 +42,12 @@ esp_err_t acs712_read_filtered_raw(acs712_t *acs712, int *data)
             return ESP_FAIL;
         }
         sum += raw;
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(2));
     }
 
     *data = sum / SAMPLES_COUNT;
+
+#endif
 
     return ESP_OK;
 }

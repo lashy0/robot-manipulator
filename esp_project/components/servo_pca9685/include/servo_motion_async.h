@@ -42,4 +42,7 @@ void servo_motion_set_target_angle(async_motion_t *motion, float target_angle);
  */
 void servo_smooth_move_async(async_motion_t *motion, float target_angle);
 
+// TODO: написать описание
+void servo_smooth_move_stop(async_motion_t *motion);
+
 #endif

@@ -120,8 +120,8 @@ esp_err_t acs712_init(acs712_t *acs712, adc_unit_t unit, adc_atten_t atten, adc_
 
 esp_err_t acs712_deinit(acs712_t *acs712)
 {
-    if (!acs712) {
-        ESP_LOGE(TAG, "Invalid ACS712");
+    if (acs712 == NULL) {
+        ESP_LOGE(TAG, "ACS712 structure pointer is NULL");
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -145,6 +145,11 @@ esp_err_t acs712_deinit(acs712_t *acs712)
 
 esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples)
 {
+    if (acs712 == NULL) {
+        ESP_LOGE(TAG, "ACS712 structure pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     esp_err_t ret;
     int raw;
     int voltage;
@@ -174,8 +179,8 @@ esp_err_t acs712_calibrate_voltage(acs712_t *acs712, int samples)
 
 esp_err_t acs712_recalibrate(acs712_t *acs712)
 {
-    if (!acs712) {
-        ESP_LOGE(TAG, "Invalid ACS712");
+    if (acs712 == NULL) {
+        ESP_LOGE(TAG, "ACS712 structure pointer is NULL");
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -206,6 +211,11 @@ esp_err_t acs712_recalibrate(acs712_t *acs712)
 
 esp_err_t acs712_read_raw(acs712_t *acs712, int *data)
 {
+    if (acs712 == NULL) {
+        ESP_LOGE(TAG, "ACS712 structure pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
     esp_err_t ret;
     int raw;
 
@@ -222,6 +232,11 @@ esp_err_t acs712_read_raw(acs712_t *acs712, int *data)
 
 esp_err_t acs712_read_voltage(acs712_t *acs712, int *data)
 {
+    if (acs712 == NULL) {
+        ESP_LOGE(TAG, "ACS712 structure pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     esp_err_t ret;
     int raw;
     int voltage;
@@ -245,9 +260,14 @@ esp_err_t acs712_read_voltage(acs712_t *acs712, int *data)
 
 esp_err_t acs712_read_current(acs712_t *acs712, float *data)
 {
+    if (acs712 == NULL) {
+        ESP_LOGE(TAG, "ACS712 structure pointer is NULL");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     if (acs712->sensitivity == 0) {
         ESP_LOGE(TAG, "Sensitivity is zero, cannot calculate current");
-        return ESP_FAIL;
+        return ESP_ERR_INVALID_ARG;
     }
 
     esp_err_t ret;
@@ -269,6 +289,11 @@ esp_err_t acs712_read_current(acs712_t *acs712, float *data)
 
 void acs712_read_data(acs712_t *acs712)
 {
+    if (acs712 == NULL) {
+        ESP_LOGE(TAG, "ACS712 structure pointer is NULL");
+        return;
+    }
+    
     esp_err_t ret;
     int raw;
     int voltage;
@@ -279,6 +304,7 @@ void acs712_read_data(acs712_t *acs712)
     ret = adc_cali_raw_to_voltage(acs712->cali_handle, raw, &voltage);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to convert ADC raw to voltage: %s", esp_err_to_name(ret));
+        return;
     }
 
     current = (float)(voltage - acs712->calibrate_voltage) / acs712->sensitivity;

@@ -36,6 +36,7 @@ esp_err_t i2c_master_init(i2c_bus_t *bus, const i2c_config_bus_t *config)
 Возвращает:
 - ```ESP_OK```: в случае успешной инициализации
 - ```ESP_ERR_INVALID_STATE```: если I2C шина уже инициализирована
+- ```ESP_ERR_INVALID_ARG```: если config имеет NULL
 - ```ESP_FAIL```: когда произошла ошибка при инициализации
 
 #### Деинициализация I2C мастер на указанной шине
