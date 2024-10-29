@@ -1,5 +1,6 @@
-from .plot import PIDControllerPlot
+from .simulation import servo_simulation
+
 
 __all__ = [
-    'PIDControllerPlot'
+    'servo_simulation'
 ]

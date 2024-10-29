@@ -1,86 +1,72 @@
+import numpy as np
 from typing import Optional
 
 
 class PIDController:
-    """
-    A class to represent a PID (Proportional, Integral, Derivative) controller
+    """Class to represent a PID (Proportional, Integral, Derivative) controller.
 
-    Attributes:
-        Kp (float): The proportional gain of the PID controller
-        Ki (float): The integral gain of the PID controller
-        Kd (float): The derivation gain of the PID controller
-        max_step (float): The maximum allowable change in the output
-        setpoint (float): The target value that the PID controller aims to achieve
-        _integral (float): The accumulated integral term to account for past errors
-        _prev_err (float): The error from the previos time step (used for calculating the derivative term)
+    Atributes
+    ---------
+    kp : float
+        The proportional gain of the PID controller.
+    
+    ki : float
+        The integral gain of the PID controller.
+    
+    kd : float
+        The derivation gain of the PID controller.
+    
+    integral_limit : float, optional
+        The maximum value for the integral term to prevent wind-up.
+    
+    _prev_err : float
+        The error from the previos time step.
+    
+    _integral : float
+        The accumulated integral term to account for past errors.
     """
     def __init__(
         self,
-        Kp: float,
-        Ki: float,
-        Kd: float,
-        max_step: Optional[float]= None,
+        kp: float,
+        ki: float,
+        kd: float,
+        integral_limit: Optional[float] = None
     ) -> None:
-        """
-        Args:
-            Kp (float): Proportional coefficient PID
-            Ki (float): Integral coefficient PID
-            Kd (float): Derivative coefficient PID
-            max_step (Optional[float]): Maximum change in output per update to ensure smooth movement
-        """
-        self.Kp = Kp
-        self.Ki = Ki
-        self.Kd = Kd
-        self.max_step = max_step
-        self.setpoint = 0.0
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.integral_limit = integral_limit
 
-        self._integral = 0.0
         self._prev_err = None
-    
-    def update(self, current_value: float, delay_time: float) -> float:
-        """
-        Update the PID controller based on the current value of the system
-        This calculates the control signal needed to move the system closer to the setpoint
+        self._integral = 0.0
 
-        Args:
-            current_value (float): The current value of the controlled variable
-            delay_time (float): Time delay between controller updates in seconds
-        
-        Returns:
-            float: The calculated control signal, which will be applied to the system
-        """
-        
-        error = self.setpoint - current_value
-        
-        self._integral += error * delay_time
-        
-        if self._prev_err is None:
-            derication = 0.0
-        else:
-            derication = (error - self._prev_err) / delay_time
-        
-        output = self.Kp * error + self.Ki * self._integral + self.Kd * derication
+    def update(self, error: float, dt: float) -> float:
+        """Updates the PID controller output given the current error and time step.
 
-        if self.max_step is not None:
-            if output > self.max_step:
-                output = self.max_step
-            elif output < -self.max_step:
-                output = -self.max_step
+        Args
+        ----
+        error : float
+            The current error value.
         
+        dt : float
+            The time step between the current and previous error calculations.
+        
+        Returns
+        -------
+        out : float
+            The output value from the PID controller to adjust the system.
+        """
+        # Integral term with anti-windup
+        self._integral += error * dt
+        if self.integral_limit is not None:
+            self._integral = np.clip(self._integral, -self.integral_limit, self.integral_limit)
+        # Derivative term
+        derivative = 0.0 if self._prev_err is None else (error - self._prev_err) / dt
         self._prev_err = error
-
-        return output
-
-    def set_setpoint(self, setpoint: float) -> None:
-        """
-        Set a new target setpoint for the PID controller
-
-        Args:
-            setpoint (float): The target value to achieve
-        """
-        self.setpoint = setpoint
+        # PID controller output
+        return self.kp * error + self.ki * self._integral + self.kd * derivative
     
     def reset(self) -> None:
-        """Reset the internal state of the PID controller (integral, previous error)"""
-        self._integral = 0.0
+        """Reset the PID controllers integral and previous error terms."""
         self._prev_err = None
+        self._integral = 0.0
